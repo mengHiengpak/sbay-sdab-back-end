@@ -1,0 +1,89 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
+import express, { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
+import cors from 'cors';
+import path from 'path';
+import fs from 'fs';
+import rateLimit from 'express-rate-limit';
+
+import authRoutes from './routes/auth';
+import videoRoutes from './routes/videos';
+import downloadRoutes from './routes/downloads';
+import playlistRoutes from './routes/playlists';
+import { setYtDlpPath } from './config';
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+const downloadDir = process.env.DOWNLOAD_DIR || './downloads';
+if (!fs.existsSync(downloadDir)) {
+  fs.mkdirSync(downloadDir, { recursive: true });
+}
+
+async function ensureYtDlp(): Promise<void> {
+  const YTDlpWrap = require('yt-dlp-wrap').default;
+  try {
+    const ytDlp = new YTDlpWrap();
+    await ytDlp.getVersion();
+    console.log('✅ yt-dlp found');
+  } catch {
+    console.log('📥 Downloading yt-dlp...');
+    const binDir = path.join(__dirname, 'bin');
+    if (!fs.existsSync(binDir)) fs.mkdirSync(binDir, { recursive: true });
+    const ytDlpPath = path.join(binDir, 'yt-dlp.exe');
+    await YTDlpWrap.downloadFromGithub(ytDlpPath);
+    setYtDlpPath(ytDlpPath);
+    console.log('✅ yt-dlp downloaded to', ytDlpPath);
+  }
+}
+
+const limiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS as string) || 15 * 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX as string) || 100,
+  message: { error: 'Too many requests, please try again later.' }
+});
+
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use('/api/', limiter);
+
+const frontendPath = path.join(__dirname, '..', 'front-end', 'front-end-sbay-sdab');
+app.use(express.static(frontendPath));
+app.use('/downloads', express.static(path.resolve(downloadDir)));
+
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/streamvault')
+  .then(() => console.log('✅ MongoDB connected successfully'))
+  .catch(err => console.log('⚠️  MongoDB connection error (running without DB):', err.message));
+
+app.use('/api/auth', authRoutes);
+app.use('/api/videos', videoRoutes);
+app.use('/api/download', downloadRoutes);
+app.use('/api/playlists', playlistRoutes);
+
+app.get('*', (req: Request, res: Response) => {
+  res.sendFile(path.join(frontendPath, 'index.html'));
+});
+
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  console.error('Server error:', err);
+  res.status(500).json({ error: 'Internal server error', message: err.message });
+});
+
+ensureYtDlp().then(() => {
+  app.listen(PORT, () => {
+    console.log(`🚀 StreamVault server running on http://localhost:${PORT}`);
+    console.log(`📁 Downloads directory: ${downloadDir}`);
+  }).on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`❌ Port ${PORT} is already in use`);
+    } else {
+      console.error('❌ Failed to start server:', err.message);
+    }
+    process.exit(1);
+  });
+});
+
+export default app;
