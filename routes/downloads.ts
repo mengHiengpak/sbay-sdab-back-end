@@ -261,11 +261,10 @@ async function startDownload(url: string, filePath: string, formatId: string, do
     } else {
       const ffmpegAvail = hasFfmpeg();
       if (ffmpegAvail) {
-        args.push('-f', formatId || 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best');
+        args.push('-f', `${formatId}+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio/best[ext=mp4]/best`);
         args.push('--merge-output-format', 'mp4');
       } else {
-        args.push('-f', `${formatId}+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio/best[ext=mp4]/best`);
-        args.push('--no-mux-to-mp4');
+        args.push('-f', `${formatId}/best[ext=mp4]/best`);
       }
     }
 
