@@ -56,7 +56,7 @@ router.post('/info', async (req, res) => {
     try {
         const YTDlpWrap = require('yt-dlp-wrap').default;
         const ytDlp = new YTDlpWrap((0, config_1.getYtDlpPath)());
-        const info = await ytDlp.getVideoInfo(url);
+        const info = await ytDlp.getVideoInfo(url, ['--js-runtimes', 'node', '--extractor-args', 'youtube:player_client=android']);
         const formats = [];
         if (info.formats) {
             const videoFormats = info.formats
@@ -195,7 +195,7 @@ async function startDownload(url, filePath, formatId, downloadId, videoId, forma
     try {
         const YTDlpWrap = require('yt-dlp-wrap').default;
         const ytDlp = new YTDlpWrap((0, config_1.getYtDlpPath)());
-        const args = [url, '-o', filePath, '--no-playlist', '--newline', '--no-mtime'];
+        const args = [url, '-o', filePath, '--no-playlist', '--newline', '--no-mtime', '--js-runtimes', 'node', '--extractor-args', 'youtube:player_client=android'];
         if (format === 'mp3' || format === 'm4a') {
             if (hasFfmpeg()) {
                 args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
