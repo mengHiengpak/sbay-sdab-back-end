@@ -25,8 +25,11 @@ function getCookieArgs(): string[] {
   if (fs.existsSync(cookiesFile)) {
     return ['--cookies', cookiesFile];
   }
-  const browser = process.env.COOKIES_FROM_BROWSER || 'chrome';
-  return ['--cookies-from-browser', browser];
+  const browser = process.env.COOKIES_FROM_BROWSER;
+  if (browser) {
+    return ['--cookies-from-browser', browser];
+  }
+  return [];
 }
 
 function detectPlatform(url: string): string {
