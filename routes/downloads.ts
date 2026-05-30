@@ -58,7 +58,12 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
     const YTDlpWrap = require('yt-dlp-wrap').default;
     const ytDlp = new YTDlpWrap(getYtDlpPath());
 
-    const info = await ytDlp.getVideoInfo([url, '--js-runtimes', 'node', '--extractor-args', 'youtube:player_client=android']);
+    const cookiesFile = path.resolve('youtube_cookies.txt');
+    const infoArgs: string[] = [url, '--js-runtimes', 'node', '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36', '--geo-bypass', '--extractor-args', 'youtube:player_client=web,default;skip=webpage'];
+    if (fs.existsSync(cookiesFile)) {
+      infoArgs.push('--cookies', cookiesFile);
+    }
+    const info = await ytDlp.getVideoInfo(infoArgs);
 
     const formats: any[] = [];
     if (info.formats) {
@@ -214,7 +219,22 @@ async function startDownload(url: string, filePath: string, formatId: string, do
     const YTDlpWrap = require('yt-dlp-wrap').default;
     const ytDlp = new YTDlpWrap(getYtDlpPath());
 
-    const args: string[] = [url, '-o', filePath, '--no-playlist', '--newline', '--no-mtime', '--js-runtimes', 'node', '--extractor-args', 'youtube:player_client=android'];
+    const cookiesFile = path.resolve('youtube_cookies.txt');
+    const args: string[] = [
+      url, '-o', filePath, '--no-playlist', '--newline', '--no-mtime',
+      '--js-runtimes', 'node',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      '--add-header', 'Accept-Language:en-US,en;q=0.9',
+      '--add-header', 'Origin:https://www.youtube.com',
+      '--geo-bypass',
+      '--retries', '10',
+      '--extractor-retries', '5',
+      '--extractor-args', 'youtube:player_client=web,default;skip=webpage',
+      '--no-check-certificates',
+    ];
+    if (fs.existsSync(cookiesFile)) {
+      args.push('--cookies', cookiesFile);
+    }
 
     if (format === 'mp3' || format === 'm4a') {
       if (hasFfmpeg()) {
@@ -307,6 +327,26 @@ router.get('/active', (req: Request, res: Response): void => {
     downloads.push({ downloadId: key, ...value });
   });
   res.json({ success: true, data: downloads });
+});
+
+router.post('/cookies', (req: Request, res: Response): void => {
+  const { cookies } = req.body;
+  if (!cookies) {
+    res.status(400).json({ success: false, error: 'Cookies text is required' });
+    return;
+  }
+  try {
+    const cookiesFile = path.resolve('youtube_cookies.txt');
+    fs.writeFileSync(cookiesFile, cookies);
+    res.json({ success: true, message: 'Cookies saved' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/cookies-status', (_req: Request, res: Response): void => {
+  const cookiesFile = path.resolve('youtube_cookies.txt');
+  res.json({ success: true, data: { hasCookies: fs.existsSync(cookiesFile) } });
 });
 
 export default router;
