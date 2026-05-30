@@ -21,13 +21,9 @@ interface ActiveDownload {
 const activeDownloads = new Map<string, ActiveDownload>();
 
 function getCookieArgs(): string[] {
-  const cookiesFile = path.join(__dirname, '..', 'youtube_cookies.txt');
+  const cookiesFile = path.resolve('youtube_cookies.txt');
   if (fs.existsSync(cookiesFile)) {
     return ['--cookies', cookiesFile];
-  }
-  const browser = process.env.COOKIES_FROM_BROWSER;
-  if (browser) {
-    return ['--cookies-from-browser', browser];
   }
   return [];
 }
