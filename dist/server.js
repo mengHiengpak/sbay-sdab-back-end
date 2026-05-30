@@ -76,8 +76,6 @@ app.use((0, cors_1.default)());
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
 app.use('/api/', limiter);
-const frontendPath = path_1.default.join(__dirname, '..', 'front-end', 'front-end-sbay-sdab');
-app.use(express_1.default.static(frontendPath));
 app.use('/downloads', express_1.default.static(path_1.default.resolve(downloadDir)));
 mongoose_1.default.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/streamvault')
     .then(() => console.log('✅ MongoDB connected successfully'))
@@ -86,14 +84,32 @@ app.use('/api/auth', auth_1.default);
 app.use('/api/videos', videos_1.default);
 app.use('/api/download', downloads_1.default);
 app.use('/api/playlists', playlists_1.default);
-app.get('*', (req, res) => {
-    res.sendFile(path_1.default.join(frontendPath, 'index.html'));
-});
+const frontendPath = path_1.default.join(__dirname, '..', 'front-end', 'front-end-sbay-sdab');
+if (fs_1.default.existsSync(frontendPath)) {
+    app.use(express_1.default.static(frontendPath));
+    app.get('*', (req, res) => {
+        res.sendFile(path_1.default.join(frontendPath, 'index.html'));
+    });
+}
+else {
+    console.log('⚠️ Frontend not found at', frontendPath);
+    app.get('*', (req, res) => {
+        res.json({ message: 'StreamVault API is running', docs: '/api' });
+    });
+}
 app.use((err, req, res, next) => {
     console.error('Server error:', err);
     res.status(500).json({ error: 'Internal server error', message: err.message });
 });
-Promise.all([ensureYtDlp(), ensureFfmpeg()]).then(() => {
+startServer();
+async function startServer() {
+    try {
+        await ensureYtDlp();
+        await ensureFfmpeg();
+    }
+    catch (err) {
+        console.error('⚠️ Startup error:', err);
+    }
     app.listen(PORT, () => {
         console.log(`🚀 StreamVault server running on http://localhost:${PORT}`);
         console.log(`📁 Downloads directory: ${downloadDir}`);
@@ -106,6 +122,6 @@ Promise.all([ensureYtDlp(), ensureFfmpeg()]).then(() => {
         }
         process.exit(1);
     });
-});
+}
 exports.default = app;
 //# sourceMappingURL=server.js.map

@@ -77,8 +77,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/api/', limiter);
 
-const frontendPath = path.join(__dirname, '..', 'front-end', 'front-end-sbay-sdab');
-app.use(express.static(frontendPath));
 app.use('/downloads', express.static(path.resolve(downloadDir)));
 
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/streamvault')
@@ -90,16 +88,33 @@ app.use('/api/videos', videoRoutes);
 app.use('/api/download', downloadRoutes);
 app.use('/api/playlists', playlistRoutes);
 
-app.get('*', (req: Request, res: Response) => {
-  res.sendFile(path.join(frontendPath, 'index.html'));
-});
+const frontendPath = path.join(__dirname, '..', 'front-end', 'front-end-sbay-sdab');
+if (fs.existsSync(frontendPath)) {
+  app.use(express.static(frontendPath));
+  app.get('*', (req: Request, res: Response) => {
+    res.sendFile(path.join(frontendPath, 'index.html'));
+  });
+} else {
+  console.log('⚠️ Frontend not found at', frontendPath);
+  app.get('*', (req: Request, res: Response) => {
+    res.json({ message: 'StreamVault API is running', docs: '/api' });
+  });
+}
 
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error('Server error:', err);
   res.status(500).json({ error: 'Internal server error', message: err.message });
 });
 
-Promise.all([ensureYtDlp(), ensureFfmpeg()]).then(() => {
+startServer();
+
+async function startServer() {
+  try {
+    await ensureYtDlp();
+    await ensureFfmpeg();
+  } catch (err) {
+    console.error('⚠️ Startup error:', err);
+  }
   app.listen(PORT, () => {
     console.log(`🚀 StreamVault server running on http://localhost:${PORT}`);
     console.log(`📁 Downloads directory: ${downloadDir}`);
@@ -111,6 +126,6 @@ Promise.all([ensureYtDlp(), ensureFfmpeg()]).then(() => {
     }
     process.exit(1);
   });
-});
+}
 
 export default app;
