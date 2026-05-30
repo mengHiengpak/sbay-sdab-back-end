@@ -9,6 +9,7 @@ const fs_1 = __importDefault(require("fs"));
 const uuid_1 = require("uuid");
 const Video_1 = __importDefault(require("../models/Video"));
 const config_1 = require("../config");
+const compress_1 = require("../utils/compress");
 const router = (0, express_1.Router)();
 const activeDownloads = new Map();
 function detectPlatform(url) {
@@ -171,7 +172,7 @@ router.post('/start', async (req, res) => {
         videoId: video._id,
         fileName
     });
-    startDownload(url, filePath, formatId || 'best', downloadId, video._id, format);
+    startDownload(url, filePath, formatId || 'best', downloadId, video._id, format, quality || 'best');
     res.json({
         success: true,
         data: {
@@ -181,7 +182,7 @@ router.post('/start', async (req, res) => {
         }
     });
 });
-async function startDownload(url, filePath, formatId, downloadId, videoId, format) {
+async function startDownload(url, filePath, formatId, downloadId, videoId, format, quality = 'best') {
     try {
         const YTDlpWrap = require('yt-dlp-wrap').default;
         const ytDlp = new YTDlpWrap((0, config_1.getYtDlpPath)());
@@ -210,12 +211,14 @@ async function startDownload(url, filePath, formatId, downloadId, videoId, forma
             emitter.on('error', (err) => reject(err));
         });
         try {
+            const compressed = await (0, compress_1.compressIfNeeded)(filePath);
             const stats = fs_1.default.statSync(filePath);
             await Video_1.default.findByIdAndUpdate(videoId, {
                 isDownloaded: true,
                 downloadProgress: 100,
                 fileSize: stats.size,
                 fileSizeFormatted: formatSize(stats.size),
+                quality: compressed ? `${quality} (compressed)` : quality,
                 url: `/downloads/${path_1.default.basename(filePath)}`
             });
         }

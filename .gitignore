@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+sbaysdab.env
+downloads/
+bin/
+startup.log
+startup-error.log
+*.log
+*.tsbuildinfo

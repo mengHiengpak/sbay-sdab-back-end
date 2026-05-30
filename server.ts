@@ -6,6 +6,7 @@ import mongoose from 'mongoose';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import rateLimit from 'express-rate-limit';
 
 import authRoutes from './routes/auth';
@@ -13,6 +14,7 @@ import videoRoutes from './routes/videos';
 import downloadRoutes from './routes/downloads';
 import playlistRoutes from './routes/playlists';
 import { setYtDlpPath } from './config';
+import { setFfmpegPath } from './utils/compress';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,19 +26,44 @@ if (!fs.existsSync(downloadDir)) {
 
 async function ensureYtDlp(): Promise<void> {
   const YTDlpWrap = require('yt-dlp-wrap').default;
+  const isWin = os.platform() === 'win32';
+  const binName = isWin ? 'yt-dlp.exe' : 'yt-dlp';
+  const binDir = path.join(__dirname, 'bin');
+  const ytDlpPath = path.join(binDir, binName);
+
+  if (fs.existsSync(ytDlpPath)) {
+    try {
+      const ytDlp = new YTDlpWrap(ytDlpPath);
+      await ytDlp.getVersion();
+      console.log('✅ yt-dlp found at', ytDlpPath);
+      setYtDlpPath(ytDlpPath);
+      return;
+    } catch { }
+  }
+
+  console.log('📥 Downloading yt-dlp...');
+  if (!fs.existsSync(binDir)) fs.mkdirSync(binDir, { recursive: true });
   try {
-    const ytDlp = new YTDlpWrap();
-    await ytDlp.getVersion();
-    console.log('✅ yt-dlp found');
-  } catch {
-    console.log('📥 Downloading yt-dlp...');
-    const binDir = path.join(__dirname, 'bin');
-    if (!fs.existsSync(binDir)) fs.mkdirSync(binDir, { recursive: true });
-    const ytDlpPath = path.join(binDir, 'yt-dlp.exe');
     await YTDlpWrap.downloadFromGithub(ytDlpPath);
+    if (!isWin) fs.chmodSync(ytDlpPath, 0o755);
     setYtDlpPath(ytDlpPath);
     console.log('✅ yt-dlp downloaded to', ytDlpPath);
+  } catch (dlErr: any) {
+    console.error('❌ Failed to download yt-dlp:', dlErr?.message || dlErr);
   }
+}
+
+async function ensureFfmpeg(): Promise<void> {
+  const isWin = os.platform() === 'win32';
+  const binName = isWin ? 'ffmpeg.exe' : 'ffmpeg';
+  const ffmpegPath = path.join(__dirname, '..', 'bin', binName);
+  if (fs.existsSync(ffmpegPath)) {
+    setFfmpegPath(ffmpegPath);
+    if (!isWin) fs.chmodSync(ffmpegPath, 0o755);
+    console.log('✅ ffmpeg found locally at', ffmpegPath);
+    return;
+  }
+  console.log('⚠️  ffmpeg not found in bin/ - compression disabled. On Render, install via apt or place binary in bin/');
 }
 
 const limiter = rateLimit({
@@ -72,7 +99,7 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   res.status(500).json({ error: 'Internal server error', message: err.message });
 });
 
-ensureYtDlp().then(() => {
+Promise.all([ensureYtDlp(), ensureFfmpeg()]).then(() => {
   app.listen(PORT, () => {
     console.log(`🚀 StreamVault server running on http://localhost:${PORT}`);
     console.log(`📁 Downloads directory: ${downloadDir}`);

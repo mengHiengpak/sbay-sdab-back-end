@@ -4,6 +4,7 @@ import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import Video from '../models/Video';
 import { getYtDlpPath } from '../config';
+import { compressIfNeeded } from '../utils/compress';
 
 const router = Router();
 
@@ -187,7 +188,7 @@ router.post('/start', async (req: Request, res: Response): Promise<void> => {
     fileName
   });
 
-  startDownload(url, filePath, formatId || 'best', downloadId, video._id, format);
+  startDownload(url, filePath, formatId || 'best', downloadId, video._id, format, quality || 'best');
 
   res.json({
     success: true,
@@ -199,7 +200,7 @@ router.post('/start', async (req: Request, res: Response): Promise<void> => {
   });
 });
 
-async function startDownload(url: string, filePath: string, formatId: string, downloadId: string, videoId: string, format: string): Promise<void> {
+async function startDownload(url: string, filePath: string, formatId: string, downloadId: string, videoId: string, format: string, quality: string = 'best'): Promise<void> {
   try {
     const YTDlpWrap = require('yt-dlp-wrap').default;
     const ytDlp = new YTDlpWrap(getYtDlpPath());
@@ -231,12 +232,14 @@ async function startDownload(url: string, filePath: string, formatId: string, do
     });
 
     try {
+      const compressed = await compressIfNeeded(filePath);
       const stats = fs.statSync(filePath);
       await Video.findByIdAndUpdate(videoId, {
         isDownloaded: true,
         downloadProgress: 100,
         fileSize: stats.size,
         fileSizeFormatted: formatSize(stats.size),
+        quality: compressed ? `${quality} (compressed)` : quality,
         url: `/downloads/${path.basename(filePath)}`
       });
     } catch (e) { /* DB might not be available */ }

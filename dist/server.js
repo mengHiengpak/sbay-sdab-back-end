@@ -10,12 +10,14 @@ const mongoose_1 = __importDefault(require("mongoose"));
 const cors_1 = __importDefault(require("cors"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
+const os_1 = __importDefault(require("os"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const auth_1 = __importDefault(require("./routes/auth"));
 const videos_1 = __importDefault(require("./routes/videos"));
 const downloads_1 = __importDefault(require("./routes/downloads"));
 const playlists_1 = __importDefault(require("./routes/playlists"));
 const config_1 = require("./config");
+const compress_1 = require("./utils/compress");
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3000;
 const downloadDir = process.env.DOWNLOAD_DIR || './downloads';
@@ -24,21 +26,46 @@ if (!fs_1.default.existsSync(downloadDir)) {
 }
 async function ensureYtDlp() {
     const YTDlpWrap = require('yt-dlp-wrap').default;
-    try {
-        const ytDlp = new YTDlpWrap();
-        await ytDlp.getVersion();
-        console.log('✅ yt-dlp found');
+    const isWin = os_1.default.platform() === 'win32';
+    const binName = isWin ? 'yt-dlp.exe' : 'yt-dlp';
+    const binDir = path_1.default.join(__dirname, 'bin');
+    const ytDlpPath = path_1.default.join(binDir, binName);
+    if (fs_1.default.existsSync(ytDlpPath)) {
+        try {
+            const ytDlp = new YTDlpWrap(ytDlpPath);
+            await ytDlp.getVersion();
+            console.log('✅ yt-dlp found at', ytDlpPath);
+            (0, config_1.setYtDlpPath)(ytDlpPath);
+            return;
+        }
+        catch { }
     }
-    catch {
-        console.log('📥 Downloading yt-dlp...');
-        const binDir = path_1.default.join(__dirname, 'bin');
-        if (!fs_1.default.existsSync(binDir))
-            fs_1.default.mkdirSync(binDir, { recursive: true });
-        const ytDlpPath = path_1.default.join(binDir, 'yt-dlp.exe');
+    console.log('📥 Downloading yt-dlp...');
+    if (!fs_1.default.existsSync(binDir))
+        fs_1.default.mkdirSync(binDir, { recursive: true });
+    try {
         await YTDlpWrap.downloadFromGithub(ytDlpPath);
+        if (!isWin)
+            fs_1.default.chmodSync(ytDlpPath, 0o755);
         (0, config_1.setYtDlpPath)(ytDlpPath);
         console.log('✅ yt-dlp downloaded to', ytDlpPath);
     }
+    catch (dlErr) {
+        console.error('❌ Failed to download yt-dlp:', dlErr?.message || dlErr);
+    }
+}
+async function ensureFfmpeg() {
+    const isWin = os_1.default.platform() === 'win32';
+    const binName = isWin ? 'ffmpeg.exe' : 'ffmpeg';
+    const ffmpegPath = path_1.default.join(__dirname, '..', 'bin', binName);
+    if (fs_1.default.existsSync(ffmpegPath)) {
+        (0, compress_1.setFfmpegPath)(ffmpegPath);
+        if (!isWin)
+            fs_1.default.chmodSync(ffmpegPath, 0o755);
+        console.log('✅ ffmpeg found locally at', ffmpegPath);
+        return;
+    }
+    console.log('⚠️  ffmpeg not found in bin/ - compression disabled. On Render, install via apt or place binary in bin/');
 }
 const limiter = (0, express_rate_limit_1.default)({
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
@@ -66,7 +93,7 @@ app.use((err, req, res, next) => {
     console.error('Server error:', err);
     res.status(500).json({ error: 'Internal server error', message: err.message });
 });
-ensureYtDlp().then(() => {
+Promise.all([ensureYtDlp(), ensureFfmpeg()]).then(() => {
     app.listen(PORT, () => {
         console.log(`🚀 StreamVault server running on http://localhost:${PORT}`);
         console.log(`📁 Downloads directory: ${downloadDir}`);
