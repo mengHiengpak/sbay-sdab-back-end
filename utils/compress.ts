@@ -59,8 +59,19 @@ function compressAudio(input: string, output: string): Promise<void> {
   });
 }
 
+function hasFfmpeg(): boolean {
+  try {
+    require('child_process').execSync('ffmpeg -version', { stdio: 'ignore', timeout: 3000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function compressIfNeeded(filePath: string): Promise<boolean> {
   try {
+    if (!hasFfmpeg()) return false;
+
     const stats = fs.statSync(filePath);
     if (stats.size <= MAX_SIZE) return false;
 
@@ -72,7 +83,7 @@ export async function compressIfNeeded(filePath: string): Promise<boolean> {
     if (ext === '.mp4') {
       const probe = await probeDuration(filePath);
       await compressVideo(filePath, tempPath, probe);
-    } else if (ext === '.mp3') {
+    } else if (ext === '.mp3' || ext === '.m4a') {
       await compressAudio(filePath, tempPath);
     } else {
       return false;

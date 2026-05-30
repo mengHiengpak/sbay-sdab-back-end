@@ -182,23 +182,38 @@ router.post('/start', async (req, res) => {
         }
     });
 });
+function hasFfmpeg() {
+    try {
+        require('child_process').execSync('ffmpeg -version', { stdio: 'ignore', timeout: 3000 });
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
 async function startDownload(url, filePath, formatId, downloadId, videoId, format, quality = 'best') {
     try {
         const YTDlpWrap = require('yt-dlp-wrap').default;
         const ytDlp = new YTDlpWrap((0, config_1.getYtDlpPath)());
-        const args = [url, '-o', filePath, '--no-playlist', '--newline'];
+        const args = [url, '-o', filePath, '--no-playlist', '--newline', '--no-mtime'];
         if (format === 'mp3' || format === 'm4a') {
-            try {
-                require('child_process').execSync('ffmpeg -version', { stdio: 'ignore' });
+            if (hasFfmpeg()) {
                 args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
             }
-            catch {
+            else {
                 args.push('-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio');
             }
         }
         else {
-            args.push('-f', formatId || 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best');
-            args.push('--merge-output-format', 'mp4');
+            const ffmpegAvail = hasFfmpeg();
+            if (ffmpegAvail) {
+                args.push('-f', formatId || 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best');
+                args.push('--merge-output-format', 'mp4');
+            }
+            else {
+                args.push('-f', `${formatId}+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio/best[ext=mp4]/best`);
+                args.push('--no-mux-to-mp4');
+            }
         }
         const download = activeDownloads.get(downloadId);
         if (download)
@@ -212,10 +227,13 @@ async function startDownload(url, filePath, formatId, downloadId, videoId, forma
                 dl.eta = progress.eta;
             }
         });
-        await new Promise((resolve, reject) => {
-            emitter.on('close', () => resolve());
-            emitter.on('error', (err) => reject(err));
-        });
+        await Promise.race([
+            new Promise((resolve, reject) => {
+                emitter.on('close', () => resolve());
+                emitter.on('error', (err) => reject(err));
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Download timed out')), 600000))
+        ]);
         try {
             const compressed = await (0, compress_1.compressIfNeeded)(filePath);
             const stats = fs_1.default.statSync(filePath);
