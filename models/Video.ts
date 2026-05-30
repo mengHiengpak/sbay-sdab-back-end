@@ -19,7 +19,7 @@ export interface IVideo extends Document {
   fileSize: number;
   fileSizeFormatted: string;
   quality: string;
-  format: 'mp4' | 'mp3' | 'webm' | 'mkv';
+  format: 'mp4' | 'mp3' | 'webm' | 'mkv' | 'm4a';
   filePath: string;
   isDownloaded: boolean;
   downloadProgress: number;
@@ -76,7 +76,7 @@ const videoSchema = new Schema<IVideo>({
   },
   format: {
     type: String,
-    enum: ['mp4', 'mp3', 'webm', 'mkv'],
+    enum: ['mp4', 'mp3', 'webm', 'mkv', 'm4a'],
     default: 'mp4'
   },
   filePath: {

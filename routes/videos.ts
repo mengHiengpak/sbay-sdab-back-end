@@ -13,7 +13,13 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
       query.$text = { $search: search };
     }
     if (platform) query.platform = platform;
-    if (format) query.format = format;
+    if (format) {
+      if (format === 'audio') {
+        query.format = { $in: ['mp3', 'm4a'] };
+      } else {
+        query.format = format;
+      }
+    }
     if (favorites === 'true') query.isFavorite = true;
 
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);

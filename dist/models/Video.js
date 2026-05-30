@@ -79,7 +79,7 @@ const videoSchema = new mongoose_1.Schema({
     },
     format: {
         type: String,
-        enum: ['mp4', 'mp3', 'webm', 'mkv'],
+        enum: ['mp4', 'mp3', 'webm', 'mkv', 'm4a'],
         default: 'mp4'
     },
     filePath: {
