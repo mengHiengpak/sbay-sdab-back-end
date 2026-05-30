@@ -250,7 +250,7 @@ async function startDownload(url: string, filePath: string, formatId: string, do
       '--extractor-retries', '5',
       '--extractor-args', 'youtube:player_client=web,default;skip=webpage',
       '--extractor-args', 'youtube:player_client=android',
-      '--no-check-certificates',
+      '--no-check-certificate',
       ...(await getCookieArgs())
     ];
 
