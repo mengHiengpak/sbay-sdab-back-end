@@ -56,14 +56,20 @@ async function ensureYtDlp(): Promise<void> {
 async function ensureFfmpeg(): Promise<void> {
   const isWin = os.platform() === 'win32';
   const binName = isWin ? 'ffmpeg.exe' : 'ffmpeg';
-  const ffmpegPath = path.join(__dirname, '..', 'bin', binName);
-  if (fs.existsSync(ffmpegPath)) {
-    setFfmpegPath(ffmpegPath);
-    if (!isWin) fs.chmodSync(ffmpegPath, 0o755);
-    console.log('✅ ffmpeg found locally at', ffmpegPath);
+  const localPath = path.join(__dirname, '..', 'bin', binName);
+  if (fs.existsSync(localPath)) {
+    setFfmpegPath(localPath);
+    if (!isWin) fs.chmodSync(localPath, 0o755);
+    console.log('✅ ffmpeg found locally at', localPath);
     return;
   }
-  console.log('⚠️  ffmpeg not found in bin/ - compression disabled. On Render, install via apt or place binary in bin/');
+  try {
+    const proc = require('child_process');
+    proc.execSync(`${isWin ? 'where' : 'which'} ffmpeg`, { stdio: 'ignore' });
+    console.log('✅ ffmpeg found on system PATH');
+  } catch {
+    console.log('⚠️  ffmpeg not found - mp3 conversion disabled. Audio will download as m4a/opus instead.');
+  }
 }
 
 const limiter = rateLimit({

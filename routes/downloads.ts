@@ -91,7 +91,7 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
         formats.push({
           id: af.format_id,
           quality: `${af.abr || 128}kbps`,
-          ext: 'mp3',
+          ext: 'm4a',
           type: 'audio',
           filesize: af.filesize || af.filesize_approx || 0,
           filesizeFormatted: formatSize(af.filesize || af.filesize_approx || 0)
@@ -103,7 +103,7 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
       formats.push(
         { id: 'best', quality: '1080p', ext: 'mp4', type: 'video', filesize: 0, filesizeFormatted: 'Unknown' },
         { id: 'bestvideo+bestaudio', quality: '720p', ext: 'mp4', type: 'video', filesize: 0, filesizeFormatted: 'Unknown' },
-        { id: 'bestaudio', quality: '128kbps', ext: 'mp3', type: 'audio', filesize: 0, filesizeFormatted: 'Unknown' }
+        { id: 'bestaudio', quality: '128kbps', ext: 'm4a', type: 'audio', filesize: 0, filesizeFormatted: 'Unknown' }
       );
     }
 
@@ -139,7 +139,7 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
           { id: 'best', quality: '1080p', ext: 'mp4', type: 'video', filesize: 0, filesizeFormatted: 'Unknown' },
           { id: '720p', quality: '720p', ext: 'mp4', type: 'video', filesize: 0, filesizeFormatted: 'Unknown' },
           { id: '480p', quality: '480p', ext: 'mp4', type: 'video', filesize: 0, filesizeFormatted: 'Unknown' },
-          { id: 'mp3', quality: '128kbps', ext: 'mp3', type: 'audio', filesize: 0, filesizeFormatted: 'Unknown' }
+          { id: 'bestaudio', quality: '128kbps', ext: 'm4a', type: 'audio', filesize: 0, filesizeFormatted: 'Unknown' }
         ],
         _fallback: true
       }
@@ -207,8 +207,13 @@ async function startDownload(url: string, filePath: string, formatId: string, do
 
     const args: string[] = [url, '-o', filePath, '--no-playlist', '--newline'];
 
-    if (format === 'mp3') {
-      args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
+    if (format === 'mp3' || format === 'm4a') {
+      try {
+        require('child_process').execSync('ffmpeg -version', { stdio: 'ignore' });
+        args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
+      } catch {
+        args.push('-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio');
+      }
     } else {
       args.push('-f', formatId || 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best');
       args.push('--merge-output-format', 'mp4');
