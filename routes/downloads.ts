@@ -20,6 +20,15 @@ interface ActiveDownload {
 
 const activeDownloads = new Map<string, ActiveDownload>();
 
+function getCookieArgs(): string[] {
+  const cookiesFile = path.join(__dirname, '..', 'youtube_cookies.txt');
+  if (fs.existsSync(cookiesFile)) {
+    return ['--cookies', cookiesFile];
+  }
+  const browser = process.env.COOKIES_FROM_BROWSER || 'chrome';
+  return ['--cookies-from-browser', browser];
+}
+
 function detectPlatform(url: string): string {
   if (url.includes('youtube.com') || url.includes('youtu.be')) return 'youtube';
   if (url.includes('facebook.com') || url.includes('fb.watch')) return 'facebook';
@@ -58,11 +67,17 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
     const YTDlpWrap = require('yt-dlp-wrap').default;
     const ytDlp = new YTDlpWrap(getYtDlpPath());
 
-    const cookiesFile = path.resolve('youtube_cookies.txt');
-    const infoArgs: string[] = [url, '--js-runtimes', 'node', '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36', '--geo-bypass', '--extractor-args', 'youtube:player_client=web,default;skip=webpage'];
-    if (fs.existsSync(cookiesFile)) {
-      infoArgs.push('--cookies', cookiesFile);
-    }
+    const infoArgs: string[] = [
+      url, '--js-runtimes', 'node',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+      '--add-header', 'Accept-Language:en-US,en;q=0.9',
+      '--add-header', 'Origin:https://www.youtube.com',
+      '--geo-bypass',
+      '--extractor-args', 'youtube:player_client=web,default;skip=webpage',
+      '--extractor-args', 'youtube:player_client=android',
+      '--no-check-certificate',
+      ...getCookieArgs()
+    ];
     const info = await ytDlp.getVideoInfo(infoArgs);
 
     const formats: any[] = [];
@@ -219,22 +234,20 @@ async function startDownload(url: string, filePath: string, formatId: string, do
     const YTDlpWrap = require('yt-dlp-wrap').default;
     const ytDlp = new YTDlpWrap(getYtDlpPath());
 
-    const cookiesFile = path.resolve('youtube_cookies.txt');
     const args: string[] = [
       url, '-o', filePath, '--no-playlist', '--newline', '--no-mtime',
       '--js-runtimes', 'node',
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--add-header', 'Origin:https://www.youtube.com',
       '--geo-bypass',
       '--retries', '10',
       '--extractor-retries', '5',
       '--extractor-args', 'youtube:player_client=web,default;skip=webpage',
+      '--extractor-args', 'youtube:player_client=android',
       '--no-check-certificates',
+      ...getCookieArgs()
     ];
-    if (fs.existsSync(cookiesFile)) {
-      args.push('--cookies', cookiesFile);
-    }
 
     if (format === 'mp3' || format === 'm4a') {
       if (hasFfmpeg()) {
