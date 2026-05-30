@@ -1,8 +1,10 @@
 import { Router, Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { v4 as uuidv4 } from 'uuid';
 import Video from '../models/Video';
+import Setting from '../models/Setting';
 import { getYtDlpPath } from '../config';
 import { compressIfNeeded } from '../utils/compress';
 
@@ -20,11 +22,15 @@ interface ActiveDownload {
 
 const activeDownloads = new Map<string, ActiveDownload>();
 
-function getCookieArgs(): string[] {
-  const cookiesFile = path.resolve('youtube_cookies.txt');
-  if (fs.existsSync(cookiesFile)) {
-    return ['--cookies', cookiesFile];
-  }
+async function getCookieArgs(): Promise<string[]> {
+  try {
+    const doc = await Setting.findOne({ key: 'youtube_cookies' });
+    if (doc && doc.value) {
+      const tmpFile = path.join(os.tmpdir(), `yt-cookies-${Date.now()}.txt`);
+      fs.writeFileSync(tmpFile, doc.value);
+      return ['--cookies', tmpFile];
+    }
+  } catch {}
   return [];
 }
 
@@ -75,7 +81,7 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
       '--extractor-args', 'youtube:player_client=web,default;skip=webpage',
       '--extractor-args', 'youtube:player_client=android',
       '--no-check-certificate',
-      ...getCookieArgs()
+      ...(await getCookieArgs())
     ];
     const info = await ytDlp.getVideoInfo(infoArgs);
 
@@ -245,7 +251,7 @@ async function startDownload(url: string, filePath: string, formatId: string, do
       '--extractor-args', 'youtube:player_client=web,default;skip=webpage',
       '--extractor-args', 'youtube:player_client=android',
       '--no-check-certificates',
-      ...getCookieArgs()
+      ...(await getCookieArgs())
     ];
 
     if (format === 'mp3' || format === 'm4a') {
@@ -340,24 +346,31 @@ router.get('/active', (req: Request, res: Response): void => {
   res.json({ success: true, data: downloads });
 });
 
-router.post('/cookies', (req: Request, res: Response): void => {
+router.post('/cookies', async (req: Request, res: Response): Promise<void> => {
   const { cookies } = req.body;
   if (!cookies) {
     res.status(400).json({ success: false, error: 'Cookies text is required' });
     return;
   }
   try {
-    const cookiesFile = path.resolve('youtube_cookies.txt');
-    fs.writeFileSync(cookiesFile, cookies);
-    res.json({ success: true, message: 'Cookies saved' });
+    await Setting.findOneAndUpdate(
+      { key: 'youtube_cookies' },
+      { value: cookies },
+      { upsert: true }
+    );
+    res.json({ success: true, message: 'Cookies saved to database' });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-router.get('/cookies-status', (_req: Request, res: Response): void => {
-  const cookiesFile = path.resolve('youtube_cookies.txt');
-  res.json({ success: true, data: { hasCookies: fs.existsSync(cookiesFile) } });
+router.get('/cookies-status', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const doc = await Setting.findOne({ key: 'youtube_cookies' });
+    res.json({ success: true, data: { hasCookies: !!(doc && doc.value) } });
+  } catch {
+    res.json({ success: true, data: { hasCookies: false } });
+  }
 });
 
 export default router;
