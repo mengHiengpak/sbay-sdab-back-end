@@ -58,7 +58,7 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
     const YTDlpWrap = require('yt-dlp-wrap').default;
     const ytDlp = new YTDlpWrap(getYtDlpPath());
 
-    const info = await ytDlp.getVideoInfo(url, ['--js-runtimes', 'node', '--extractor-args', 'youtube:player_client=android']);
+    const info = await ytDlp.getVideoInfo([url, '--js-runtimes', 'node', '--extractor-args', 'youtube:player_client=android']);
 
     const formats: any[] = [];
     if (info.formats) {
