@@ -18,6 +18,7 @@ import { setYtDlpPath } from './config';
 import { setFfmpegPath } from './utils/compress';
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 process.on('unhandledRejection', (reason) => {
