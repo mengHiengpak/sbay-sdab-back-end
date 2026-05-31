@@ -52,13 +52,11 @@ async function getCookieArgs(platform: string = 'youtube'): Promise<string[]> {
   return [];
 }
 
-function getPlatformHeaders(platform: string, isAndroid: boolean = false): string[] {
+function getPlatformHeaders(platform: string): string[] {
   const headers: string[] = [];
   if (platform === 'youtube') {
-    if (!isAndroid) {
-      headers.push('--add-header', 'Origin:https://www.youtube.com');
-      headers.push('--add-header', 'Referer:https://www.youtube.com/');
-    }
+    headers.push('--add-header', 'Origin:https://www.youtube.com');
+    headers.push('--add-header', 'Referer:https://www.youtube.com/');
   } else if (platform === 'facebook') {
     headers.push('--add-header', 'Origin:https://www.facebook.com');
     headers.push('--add-header', 'Referer:https://www.facebook.com/');
@@ -78,7 +76,7 @@ function getPlatformHeaders(platform: string, isAndroid: boolean = false): strin
 function getPlatformExtractorArgs(platform: string): string[] {
   if (platform === 'youtube') {
     return [
-      '--extractor-args', 'youtube:player_client=android',
+      '--extractor-args', 'youtube:player_client=android,web,ios,android_creator,ios_creator,web_creator,android_music,web_music,web_embedded',
       '--extractor-args', 'youtube:include_dash_manifest=False',
       '--extractor-args', 'youtube:skip=webpage'
     ];
@@ -154,7 +152,7 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
       '--geo-bypass',
       '--throttled-rate', '100K',
       '--no-check-certificate',
-      ...getPlatformHeaders(platform, platform === 'youtube'),
+      ...getPlatformHeaders(platform),
       ...getPlatformExtractorArgs(platform),
       ...(await getCookieArgs(platform))
     ];
@@ -362,7 +360,7 @@ async function startDownload(url: string, filePath: string, formatId: string, do
       '--extractor-retries', '5',
       '--throttled-rate', '100K',
       '--no-check-certificate',
-      ...getPlatformHeaders(platform, platform === 'youtube'),
+      ...getPlatformHeaders(platform),
       ...getPlatformExtractorArgs(platform),
       ...(await getCookieArgs(platform))
     ];
