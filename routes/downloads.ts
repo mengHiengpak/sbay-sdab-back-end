@@ -26,6 +26,11 @@ async function getCookieArgs(platform: string = 'youtube'): Promise<string[]> {
   try {
     const doc = await Setting.findOne({ key: `${platform}_cookies` });
     if (doc && doc.value) {
+      const ageHours = (Date.now() - new Date(doc.updatedAt || doc.createdAt).getTime()) / (1000 * 60 * 60);
+      if (ageHours > 6) {
+        console.log(`⚠️ ${platform} cookies are ${Math.round(ageHours)}h old, skipping (expired)`);
+        return [];
+      }
       const tmpFile = path.join(os.tmpdir(), `${platform}-cookies-${Date.now()}.txt`);
       fs.writeFileSync(tmpFile, doc.value);
       return ['--cookies', tmpFile];
