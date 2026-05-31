@@ -52,11 +52,13 @@ async function getCookieArgs(platform: string = 'youtube'): Promise<string[]> {
   return [];
 }
 
-function getPlatformHeaders(platform: string): string[] {
+function getPlatformHeaders(platform: string, isAndroid: boolean = false): string[] {
   const headers: string[] = [];
   if (platform === 'youtube') {
-    headers.push('--add-header', 'Origin:https://www.youtube.com');
-    headers.push('--add-header', 'Referer:https://www.youtube.com/');
+    if (!isAndroid) {
+      headers.push('--add-header', 'Origin:https://www.youtube.com');
+      headers.push('--add-header', 'Referer:https://www.youtube.com/');
+    }
   } else if (platform === 'facebook') {
     headers.push('--add-header', 'Origin:https://www.facebook.com');
     headers.push('--add-header', 'Referer:https://www.facebook.com/');
@@ -147,12 +149,12 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
 
     const infoArgs: string[] = [
       url,
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.104 Mobile Safari/537.36',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--geo-bypass',
       '--throttled-rate', '100K',
       '--no-check-certificate',
-      ...getPlatformHeaders(platform),
+      ...getPlatformHeaders(platform, platform === 'youtube'),
       ...getPlatformExtractorArgs(platform),
       ...(await getCookieArgs(platform))
     ];
@@ -353,14 +355,14 @@ async function startDownload(url: string, filePath: string, formatId: string, do
 
     const args: string[] = [
       url, '-o', filePath, '--no-playlist', '--newline', '--no-mtime',
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.104 Mobile Safari/537.36',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--geo-bypass',
       '--retries', '10',
       '--extractor-retries', '5',
       '--throttled-rate', '100K',
       '--no-check-certificate',
-      ...getPlatformHeaders(platform),
+      ...getPlatformHeaders(platform, platform === 'youtube'),
       ...getPlatformExtractorArgs(platform),
       ...(await getCookieArgs(platform))
     ];
