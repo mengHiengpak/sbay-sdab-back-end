@@ -77,8 +77,7 @@ function getPlatformExtractorArgs(platform: string): string[] {
   if (platform === 'youtube') {
     return [
       '--extractor-args', 'youtube:player_client=android,web,ios,android_creator,ios_creator,web_creator,android_music,web_music,web_embedded',
-      '--extractor-args', 'youtube:include_dash_manifest=False',
-      '--extractor-args', 'youtube:skip=webpage'
+      '--extractor-args', 'youtube:include_dash_manifest=False'
     ];
   }
   if (platform === 'facebook') {
@@ -147,7 +146,6 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
 
     const infoArgs: string[] = [
       url,
-      '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.104 Mobile Safari/537.36',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--geo-bypass',
       '--throttled-rate', '100K',
@@ -353,7 +351,6 @@ async function startDownload(url: string, filePath: string, formatId: string, do
 
     const args: string[] = [
       url, '-o', filePath, '--no-playlist', '--newline', '--no-mtime',
-      '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.104 Mobile Safari/537.36',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--geo-bypass',
       '--retries', '10',
