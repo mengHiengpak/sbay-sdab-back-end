@@ -72,7 +72,9 @@ async function ensureYtDlp(): Promise<void> {
 async function ensureFfmpeg(): Promise<void> {
   const isWin = os.platform() === 'win32';
   const binName = isWin ? 'ffmpeg.exe' : 'ffmpeg';
-  const localPath = path.join(__dirname, '..', 'bin', binName);
+  const isDist = __dirname.endsWith('dist');
+  const binDir = path.join(__dirname, isDist ? '..' : '', 'bin');
+  const localPath = path.join(binDir, binName);
   if (fs.existsSync(localPath)) {
     setFfmpegPath(localPath);
     if (!isWin) fs.chmodSync(localPath, 0o755);
@@ -110,7 +112,8 @@ app.use('/api/videos', videoRoutes);
 app.use('/api/download', downloadRoutes);
 app.use('/api/playlists', playlistRoutes);
 
-const frontendPath = path.join(__dirname, '..', '..', 'front-end', 'front-end-sbay-sdab', 'out');
+const frontendBase = __dirname.endsWith('dist') ? path.join(__dirname, '..', '..') : path.join(__dirname, '..');
+const frontendPath = path.join(frontendBase, 'front-end', 'front-end-sbay-sdab', 'out');
 if (fs.existsSync(frontendPath)) {
   app.use(express.static(frontendPath));
   app.get('*', (req: Request, res: Response) => {
