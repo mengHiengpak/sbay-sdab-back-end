@@ -114,7 +114,7 @@ app.use('/api/download', downloadRoutes);
 app.use('/api/playlists', playlistRoutes);
 
 const isDist = __dirname.endsWith('dist');
-const projectRoot = isDist ? path.join(__dirname, '..', '..') : __dirname;
+const projectRoot = isDist ? path.join(__dirname, '..') : __dirname;
 const frontendPath = path.join(projectRoot, 'front-end', 'front-end-sbay-sdab', 'out');
 if (fs.existsSync(frontendPath)) {
   app.use(express.static(frontendPath));
