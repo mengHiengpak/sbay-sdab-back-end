@@ -105,7 +105,9 @@ app.use('/api/', limiter);
 
 app.use('/downloads', express.static(path.resolve(downloadDir)));
 
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/streamvault')
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/streamvault', {
+  authSource: 'admin'
+})
   .then(() => console.log('✅ MongoDB connected successfully'))
   .catch(err => console.log('⚠️  MongoDB connection error (running without DB):', err.message));
 
