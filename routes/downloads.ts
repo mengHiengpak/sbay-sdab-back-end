@@ -76,9 +76,9 @@ function getPlatformHeaders(platform: string): string[] {
 function getPlatformExtractorArgs(platform: string): string[] {
   if (platform === 'youtube') {
     return [
-      '--extractor-args', 'youtube:player_client=android,ios',
+      '--extractor-args', 'youtube:player_client=android',
       '--extractor-args', 'youtube:include_dash_manifest=False',
-      '--extractor-args', 'youtube:player_skip=webpage,configs'
+      '--extractor-args', 'youtube:skip=webpage'
     ];
   }
   if (platform === 'facebook') {
@@ -146,7 +146,7 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
     const platform = detectPlatform(url);
 
     const infoArgs: string[] = [
-      url, '--js-runtimes', 'node',
+      url,
       '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--geo-bypass',
@@ -353,7 +353,6 @@ async function startDownload(url: string, filePath: string, formatId: string, do
 
     const args: string[] = [
       url, '-o', filePath, '--no-playlist', '--newline', '--no-mtime',
-      '--js-runtimes', 'node',
       '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--geo-bypass',
