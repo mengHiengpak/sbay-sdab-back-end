@@ -8,7 +8,7 @@ COPY package*.json ./
 RUN npm ci
 
 COPY front-end/front-end-sbay-sdab/package*.json ./front-end/front-end-sbay-sdab/
-RUN cd front-end/front-end-sbay-sdab && npm ci
+RUN cd front-end/front-end-sbay-sdab && npm install
 
 COPY . .
 
