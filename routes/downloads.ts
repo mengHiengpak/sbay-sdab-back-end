@@ -31,6 +31,14 @@ async function getCookieArgs(): Promise<string[]> {
       return ['--cookies', tmpFile];
     }
   } catch {}
+  const browser = process.env.COOKIES_FROM_BROWSER;
+  if (browser) {
+    return ['--cookies-from-browser', browser];
+  }
+  const cookiesFile = process.env.COOKIES_FILE;
+  if (cookiesFile && fs.existsSync(cookiesFile)) {
+    return ['--cookies', cookiesFile];
+  }
   return [];
 }
 
@@ -78,8 +86,9 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--add-header', 'Origin:https://www.youtube.com',
       '--geo-bypass',
-      '--extractor-args', 'youtube:player_client=web,default;skip=webpage',
-      '--extractor-args', 'youtube:player_client=android',
+      '--extractor-args', 'youtube:player_client=android,web;skip=webpage',
+      '--extractor-args', 'youtube:include_dash_manifest=False',
+      '--throttled-rate', '100K',
       '--no-check-certificate',
       ...(await getCookieArgs())
     ];
@@ -248,8 +257,9 @@ async function startDownload(url: string, filePath: string, formatId: string, do
       '--geo-bypass',
       '--retries', '10',
       '--extractor-retries', '5',
-      '--extractor-args', 'youtube:player_client=web,default;skip=webpage',
-      '--extractor-args', 'youtube:player_client=android',
+      '--extractor-args', 'youtube:player_client=android,web;skip=webpage',
+      '--extractor-args', 'youtube:include_dash_manifest=False',
+      '--throttled-rate', '100K',
       '--no-check-certificate',
       ...(await getCookieArgs())
     ];
