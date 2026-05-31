@@ -253,7 +253,7 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
 });
 
 router.post('/start', async (req: Request, res: Response): Promise<void> => {
-  const { url, formatId, quality, ext, title, thumbnail, playlistId } = req.body;
+  const { url, formatId, quality, ext, title, thumbnail, playlistId, duration, durationFormatted } = req.body;
   if (!url || typeof url !== 'string') {
     res.status(400).json({ success: false, error: 'Valid URL is required' });
     return;
@@ -281,6 +281,8 @@ router.post('/start', async (req: Request, res: Response): Promise<void> => {
       thumbnail: thumbnail || '',
       format,
       quality: quality || 'best',
+      duration: duration || 0,
+      durationFormatted: durationFormatted || '0:00',
       filePath,
       isDownloaded: false,
       downloadProgress: 0,
@@ -397,11 +399,24 @@ async function startDownload(url: string, filePath: string, formatId: string, do
     try {
       const compressed = await compressIfNeeded(filePath);
       const stats = fs.statSync(filePath);
+
+      let probeDuration = 0;
+      try {
+        const { execSync } = require('child_process');
+        const probeOut = execSync(
+          `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}"`,
+          { timeout: 10000, encoding: 'utf8' }
+        );
+        probeDuration = Math.round(parseFloat(probeOut.trim()));
+      } catch {}
+
       await Video.findByIdAndUpdate(videoId, {
         isDownloaded: true,
         downloadProgress: 100,
         fileSize: stats.size,
         fileSizeFormatted: formatSize(stats.size),
+        duration: probeDuration || 0,
+        durationFormatted: formatDuration(probeDuration),
         quality: compressed ? `${quality} (compressed)` : quality,
         url: `/downloads/${path.basename(filePath)}`
       });

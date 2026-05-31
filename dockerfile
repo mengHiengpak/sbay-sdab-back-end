@@ -7,9 +7,13 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
+COPY front-end/front-end-sbay-sdab/package*.json ./front-end/front-end-sbay-sdab/
+RUN cd front-end/front-end-sbay-sdab && npm ci
+
 COPY . .
 
 RUN npm run build
+RUN cd front-end/front-end-sbay-sdab && npm run build
 
 EXPOSE 3001
 
