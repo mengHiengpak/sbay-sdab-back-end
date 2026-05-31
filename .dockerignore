@@ -1,1 +1,12 @@
 node_modules
+.git
+.env
+.env.local
+sbaysdab.env
+cookies.txt
+*.log
+downloads/
+data/
+bin/
+.next/
+tsconfig.tsbuildinfo

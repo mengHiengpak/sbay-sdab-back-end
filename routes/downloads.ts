@@ -33,7 +33,12 @@ async function getCookieArgs(platform: string = 'youtube'): Promise<string[]> {
   } catch {}
   const browser = process.env.COOKIES_FROM_BROWSER;
   if (browser) {
-    return ['--cookies-from-browser', browser];
+    try {
+      require('child_process').execSync(`${os.platform() === 'win32' ? 'where' : 'which'} ${browser}`, { stdio: 'ignore', timeout: 3000 });
+      return ['--cookies-from-browser', browser];
+    } catch {
+      console.log(`⚠️ Browser "${browser}" not found, skipping cookie extraction`);
+    }
   }
   const cookiesFile = process.env.COOKIES_FILE;
   if (cookiesFile && fs.existsSync(cookiesFile)) {

@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
-dotenv.config();
+const envPath = require('fs').existsSync('./sbaysdab.env') ? './sbaysdab.env' : '.env';
+dotenv.config({ path: envPath });
 
 import express, { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
@@ -112,8 +113,9 @@ app.use('/api/videos', videoRoutes);
 app.use('/api/download', downloadRoutes);
 app.use('/api/playlists', playlistRoutes);
 
-const frontendBase = __dirname.endsWith('dist') ? path.join(__dirname, '..', '..') : path.join(__dirname, '..');
-const frontendPath = path.join(frontendBase, 'front-end', 'front-end-sbay-sdab', 'out');
+const isDist = __dirname.endsWith('dist');
+const projectRoot = isDist ? path.join(__dirname, '..', '..') : __dirname;
+const frontendPath = path.join(projectRoot, 'front-end', 'front-end-sbay-sdab', 'out');
 if (fs.existsSync(frontendPath)) {
   app.use(express.static(frontendPath));
   app.get('*', (req: Request, res: Response) => {
