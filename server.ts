@@ -17,7 +17,15 @@ import { setYtDlpPath } from './config';
 import { setFfmpegPath } from './utils/compress';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = parseInt(process.env.PORT || '3001', 10);
+
+process.on('unhandledRejection', (reason) => {
+  console.error('❌ Unhandled Rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
+});
 
 const downloadDir = process.env.DOWNLOAD_DIR || './downloads';
 if (!fs.existsSync(downloadDir)) {
@@ -28,7 +36,8 @@ async function ensureYtDlp(): Promise<void> {
   const YTDlpWrap = require('yt-dlp-wrap').default;
   const isWin = os.platform() === 'win32';
   const binName = isWin ? 'yt-dlp.exe' : 'yt-dlp';
-  const binDir = path.join(__dirname, 'bin');
+  const isDist = __dirname.endsWith('dist');
+  const binDir = path.join(__dirname, isDist ? '..' : '', 'bin');
   const ytDlpPath = path.join(binDir, binName);
 
   if (fs.existsSync(ytDlpPath)) {
@@ -37,6 +46,13 @@ async function ensureYtDlp(): Promise<void> {
       await ytDlp.getVersion();
       console.log('✅ yt-dlp found at', ytDlpPath);
       setYtDlpPath(ytDlpPath);
+      try {
+        console.log('🔄 Updating yt-dlp...');
+        await ytDlp.update();
+        console.log('✅ yt-dlp updated to latest version');
+      } catch {
+        console.log('⚠️ yt-dlp update skipped (already latest or no internet)');
+      }
       return;
     } catch { }
   }
@@ -94,7 +110,7 @@ app.use('/api/videos', videoRoutes);
 app.use('/api/download', downloadRoutes);
 app.use('/api/playlists', playlistRoutes);
 
-const frontendPath = path.join(__dirname, '..', 'front-end', 'front-end-sbay-sdab');
+const frontendPath = path.join(__dirname, '..', '..', 'front-end', 'front-end-sbay-sdab', 'out');
 if (fs.existsSync(frontendPath)) {
   app.use(express.static(frontendPath));
   app.get('*', (req: Request, res: Response) => {

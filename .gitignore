@@ -5,8 +5,10 @@ dist/
 sbaysdab.env
 downloads/
 bin/
+data/
 startup.log
 startup-error.log
 *.log
 *.tsbuildinfo
 cookies.txt
+debug_json.mjs

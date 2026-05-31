@@ -8,6 +8,12 @@ interface JwtPayload {
 
 const auth = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      res.status(500).json({ error: 'JWT_SECRET not configured on server' });
+      return;
+    }
+
     const header = req.headers.authorization;
     if (!header || !header.startsWith('Bearer ')) {
       res.status(401).json({ error: 'Authentication required' });
@@ -15,7 +21,7 @@ const auth = async (req: Request, res: Response, next: NextFunction): Promise<vo
     }
 
     const token = header.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
+    const decoded = jwt.verify(token, secret) as JwtPayload;
     const user = await User.findById(decoded.id);
 
     if (!user) {
