@@ -8,3 +8,4 @@ startup.log
 startup-error.log
 *.log
 *.tsbuildinfo
+cookies.txt
