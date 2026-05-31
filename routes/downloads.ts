@@ -145,7 +145,7 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
     const platform = detectPlatform(url);
 
     const infoArgs: string[] = [
-      url,
+      url, '--js-runtimes', 'node', '--sleep-requests', '1',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--geo-bypass',
       '--throttled-rate', '100K',
@@ -351,6 +351,7 @@ async function startDownload(url: string, filePath: string, formatId: string, do
 
     const args: string[] = [
       url, '-o', filePath, '--no-playlist', '--newline', '--no-mtime',
+      '--js-runtimes', 'node', '--sleep-requests', '1',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--geo-bypass',
       '--retries', '10',
