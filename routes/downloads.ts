@@ -22,24 +22,31 @@ interface ActiveDownload {
 
 const activeDownloads = new Map<string, ActiveDownload>();
 
+const _tmpCookieFiles: string[] = [];
+
+process.on('exit', () => {
+  _tmpCookieFiles.forEach(f => { try { fs.unlinkSync(f); } catch {} });
+});
+
 async function getCookieArgs(platform: string = 'youtube'): Promise<string[]> {
   try {
     const doc = await Setting.findOne({ key: `${platform}_cookies` });
     if (doc && doc.value) {
       const ageHours = (Date.now() - new Date(doc.updatedAt || doc.createdAt).getTime()) / (1000 * 60 * 60);
-      if (ageHours > 6) {
+      if (ageHours > 24) {
         console.log(`⚠️ ${platform} cookies are ${Math.round(ageHours)}h old, skipping (expired)`);
         return [];
       }
       const tmpFile = path.join(os.tmpdir(), `${platform}-cookies-${Date.now()}.txt`);
       fs.writeFileSync(tmpFile, doc.value);
+      _tmpCookieFiles.push(tmpFile);
       return ['--cookies', tmpFile];
     }
   } catch {}
   const browser = process.env.COOKIES_FROM_BROWSER;
   if (browser) {
     try {
-      require('child_process').execSync(`${os.platform() === 'win32' ? 'where' : 'which'} ${browser}`, { stdio: 'ignore', timeout: 3000 });
+      require('child_process').execSync(`"${browser}" --version`, { stdio: 'ignore', timeout: 3000 });
       return ['--cookies-from-browser', browser];
     } catch {
       console.log(`⚠️ Browser "${browser}" not found, skipping cookie extraction`);
@@ -47,7 +54,11 @@ async function getCookieArgs(platform: string = 'youtube'): Promise<string[]> {
   }
   const cookiesFile = process.env.COOKIES_FILE;
   if (cookiesFile && fs.existsSync(cookiesFile)) {
-    return ['--cookies', cookiesFile];
+    const stats = fs.statSync(cookiesFile);
+    if (stats.size > 50) {
+      return ['--cookies', cookiesFile];
+    }
+    console.log(`⚠️ Cookies file ${cookiesFile} is too small (${stats.size}b), skipping`);
   }
   return [];
 }
@@ -77,7 +88,8 @@ function getPlatformExtractorArgs(platform: string): string[] {
   if (platform === 'youtube') {
     return [
       '--extractor-args', 'youtube:player_client=android,web,ios,android_creator,ios_creator,web_creator,android_music,web_music,web_embedded',
-      '--extractor-args', 'youtube:include_dash_manifest=False'
+      '--extractor-args', 'youtube:include_dash_manifest=False',
+      '--extractor-args', 'youtube:player_skip=webpage,configs'
     ];
   }
   if (platform === 'facebook') {
@@ -145,11 +157,14 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
     const platform = detectPlatform(url);
 
     const infoArgs: string[] = [
-      url, '--js-runtimes', 'node', '--sleep-requests', '1',
+      url, '--js-runtimes', 'node', '--sleep-requests', '2',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--geo-bypass',
+      '--retries', '5',
+      '--extractor-retries', '5',
       '--throttled-rate', '100K',
       '--no-check-certificate',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
       ...getPlatformHeaders(platform),
       ...getPlatformExtractorArgs(platform),
       ...(await getCookieArgs(platform))
@@ -351,13 +366,14 @@ async function startDownload(url: string, filePath: string, formatId: string, do
 
     const args: string[] = [
       url, '-o', filePath, '--no-playlist', '--newline', '--no-mtime',
-      '--js-runtimes', 'node', '--sleep-requests', '1',
+      '--js-runtimes', 'node', '--sleep-requests', '2',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--geo-bypass',
       '--retries', '10',
       '--extractor-retries', '5',
       '--throttled-rate', '100K',
       '--no-check-certificate',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
       ...getPlatformHeaders(platform),
       ...getPlatformExtractorArgs(platform),
       ...(await getCookieArgs(platform))
