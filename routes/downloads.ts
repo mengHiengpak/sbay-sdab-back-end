@@ -257,7 +257,7 @@ async function retryWithInvidious(url: string, filePath: string, downloadId: str
         '--user-agent', 'Mozilla/5.0'
       ];
       if (format === 'mp3' || format === 'm4a') {
-        args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
+        args.push('-x', '--audio-format', 'mp3', '--audio-quality', '5');
       } else {
         args.push('-f', 'best[ext=mp4]/best');
       }
@@ -538,20 +538,20 @@ async function startDownload(url: string, filePath: string, formatId: string, do
       ...(await getCookieArgs(platform))
     ];
 
-    if (format === 'mp3' || format === 'm4a') {
-      if (hasFfmpeg()) {
-        args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
+      if (format === 'mp3' || format === 'm4a') {
+        if (hasFfmpeg()) {
+          args.push('-x', '--audio-format', 'mp3', '--audio-quality', '5');
+        } else {
+          args.push('-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio');
+        }
       } else {
-        args.push('-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio');
-      }
-    } else {
-      const ffmpegAvail = hasFfmpeg();
-      if (ffmpegAvail) {
-        args.push('-f', `${formatId}+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio/best[ext=mp4]/best`);
-        args.push('--merge-output-format', 'mp4');
-      } else {
-        args.push('-f', `${formatId}/best[ext=mp4]/best`);
-      }
+        const ffmpegAvail = hasFfmpeg();
+        if (ffmpegAvail) {
+          args.push('-f', `${formatId}+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio/best[ext=mp4]/best`);
+          args.push('--merge-output-format', 'mp4');
+        } else {
+          args.push('-f', `${formatId}/best[ext=mp4]/best`);
+        }
     }
 
     const download = activeDownloads.get(downloadId);
