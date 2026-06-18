@@ -77,10 +77,10 @@ export default function CookiesPage() {
 
         {!isLoggedIn ? (
           <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 mb-4 text-center">
-            <p className="text-amber-400 text-[0.85rem]">សូមចូលគណនីមុនពេលកំណត់ Cookies</p>
+            <p className="text-amber-400 text-[0.85rem]">Please sign in before setting cookies</p>
             <button onClick={() => navigateTo('login')}
               className="mt-2 px-4 py-1.5 bg-accent-violet text-white rounded-lg text-[0.8rem] font-medium cursor-pointer border-none hover:opacity-90">
-              ចូលគណនី
+              Sign In
             </button>
           </div>
         ) : (

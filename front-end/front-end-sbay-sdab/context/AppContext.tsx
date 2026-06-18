@@ -240,7 +240,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const res = await API.post('/playlists', { name, description, color });
       if (res.success) {
         dispatch({ type: 'ADD_PLAYLIST', payload: res.data as Playlist });
-        showToastRef.current('success', 'Playlist បានបង្កើត', name);
+        showToastRef.current('success', 'Playlist created', name);
         closeModal();
         return true;
       }
@@ -249,7 +249,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const analyzeUrl = useCallback(async (url: string) => {
-    if (!url) { showToastRef.current('error', 'Error', 'សូម​បញ្ចូល URL'); return null; }
+    if (!url) { showToastRef.current('error', 'Error', 'Please enter a URL'); return null; }
     try {
       const token = API.getToken();
       const res = await API.post('/download/info', { url }, !!token);
@@ -258,7 +258,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_SELECTED_FORMAT', payload: (res.data as any)?.formats?.[0] || null });
       return res.data;
     } catch (err: any) {
-      showToastRef.current('error', 'Error', 'មិនអាចវិភាគ URL បាន: ' + err.message);
+      showToastRef.current('error', 'Error', 'Cannot analyze URL: ' + err.message);
       return null;
     }
   }, []);
@@ -322,7 +322,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'ADD_DOWNLOAD', payload: { id: downloadId, data: { ...existing, status, progress, title: existing.title || initialTitle } } });
         if (status === 'completed') {
           clearInterval(interval);
-          updateToast(toastId, { type: 'success', title: 'ទាញ់យក​បាន​ជោគ​ជ័យ! ✓', subtitle: '' });
+          updateToast(toastId, { type: 'success', title: 'Download successful! ✓', subtitle: '' });
           setTimeout(() => { dispatch({ type: 'REMOVE_DOWNLOAD', payload: downloadId }); removeToast(toastId); }, 3000);
         } else if (status === 'error') {
           clearInterval(interval);

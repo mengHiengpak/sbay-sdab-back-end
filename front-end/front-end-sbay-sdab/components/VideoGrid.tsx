@@ -19,10 +19,10 @@ export default function VideoGrid({ videos, onPlayVideo, onFavorite, onDelete }:
     try {
       const res = await API.patch(`/videos/${video._id}/favorite`);
       if (res.success) {
-        showToast('success', video.isFavorite ? 'ដកចេញពីសំណព្វ' : 'បន្ថែមទៅសំណព្វ', video.title?.substring(0, 40));
+        showToast('success', video.isFavorite ? 'Removed from Favorites' : 'Added to Favorites', video.title?.substring(0, 40));
         onFavorite?.(video);
       }
-    } catch { showToast('error', 'Error', 'មិនអាចកែប្រែបានទេ'); }
+    } catch { showToast('error', 'Error', 'Cannot modify'); }
   };
 
   const handleDelete = async (e: React.MouseEvent, video: any) => {
@@ -30,10 +30,10 @@ export default function VideoGrid({ videos, onPlayVideo, onFavorite, onDelete }:
     try {
       const res = await API.delete(`/videos/${video._id}`);
       if (res.success) {
-        showToast('success', 'លុបរួច', video.title?.substring(0, 40));
+        showToast('success', 'Deleted', video.title?.substring(0, 40));
         onDelete?.(video);
       }
-    } catch { showToast('error', 'Error', 'មិនអាចលុបបានទេ'); }
+    } catch { showToast('error', 'Error', 'Cannot delete'); }
   };
 
   if (!videos || videos.length === 0) {
@@ -42,7 +42,7 @@ export default function VideoGrid({ videos, onPlayVideo, onFavorite, onDelete }:
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-12 h-12 opacity-40">
           <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
         </svg>
-        <p className="text-[0.9rem]">មិនទាន់មាន Video</p>
+        <p className="text-[0.9rem]">No videos yet</p>
       </div>
     );
   }

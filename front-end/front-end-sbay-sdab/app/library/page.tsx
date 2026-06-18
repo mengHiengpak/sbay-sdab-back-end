@@ -47,12 +47,12 @@ export default function LibraryPage() {
   };
 
   const handlePlayVideo = (video: Video, queue: Video[], index: number) => {
-    if (!video.url || !video.isDownloaded) { showToast('error', 'Play Error', 'Video មិនទាន់ download ទេ'); return; }
+    if (!video.url || !video.isDownloaded) { showToast('error', 'Play Error', 'Video has not been downloaded yet'); return; }
     playVideo(video, queue, index);
   };
 
   const filters = [
-    { label: 'ទាំងអស់', value: '' },
+    { label: 'All', value: '' },
     { label: 'YouTube', value: 'youtube' },
     { label: 'Facebook', value: 'facebook' },
     { label: 'TikTok', value: 'tiktok' },
@@ -62,7 +62,7 @@ export default function LibraryPage() {
   return (
     <div className="animate-fade-in">
       <div className="flex items-start justify-between mb-7 flex-wrap gap-4">
-        <h1 className="font-serif text-[2rem] italic text-text-primary leading-[1.2]">បណ្ណាល័យ</h1>
+        <h1 className="font-serif text-[2rem] italic text-text-primary leading-[1.2]">Library</h1>
         <div className="flex gap-2 flex-wrap">
           {filters.map((f) => (
             <button key={f.value} onClick={() => handleFilter(f.value)}

@@ -18,15 +18,15 @@ export default function DownloadCard() {
 
   return (
     <div className="bg-bg-card/80 backdrop-blur-md border border-border rounded-2xl p-5 mb-7">
-      <h2 className="text-[1rem] font-semibold text-text-primary mb-3">ទាញ់យក Video/Music</h2>
+      <h2 className="text-[1rem] font-semibold text-text-primary mb-3">Download Video/Music</h2>
       <div className="flex gap-2">
         <input type="url" value={url} onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
-          placeholder="បិទភ្ជាប់ URL (YouTube, Facebook, TikTok...)"
+          placeholder="Paste URL (YouTube, Facebook, TikTok...)"
           className="flex-1 px-3.5 py-2.5 bg-bg-input border border-border rounded-xl text-text-primary font-main text-[0.9rem] outline-none transition-all focus:border-accent-violet focus:shadow-[0_0_0_3px_rgba(124,58,237,0.1)]" />
         <button onClick={handleAnalyze} disabled={loading}
           className="px-5 py-2.5 bg-accent-violet text-white font-medium text-[0.85rem] rounded-xl border-none cursor-pointer transition-all hover:opacity-90 disabled:opacity-50 whitespace-nowrap">
-          {loading ? 'កំពុងពិនិត្យ...' : 'ពិនិត្យ'}
+          {loading ? 'Checking...' : 'Check'}
         </button>
       </div>
 
@@ -50,7 +50,7 @@ export default function DownloadCard() {
                     </select>
                     <button onClick={startDownload}
                       className="px-4 py-1.5 bg-accent-green text-white text-[0.8rem] font-medium rounded-lg border-none cursor-pointer hover:opacity-90 transition-all whitespace-nowrap">
-                      ទាញ់យក
+                      Download
                     </button>
                   </div>
                 )}

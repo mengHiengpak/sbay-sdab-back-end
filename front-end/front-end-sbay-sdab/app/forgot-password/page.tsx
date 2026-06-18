@@ -12,18 +12,18 @@ export default function ForgotPasswordPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!email) { showToast('error', 'Error', 'សូមបញ្ចូលអ៊ីមែល'); return; }
+    if (!email) { showToast('error', 'Error', 'Please enter your email'); return; }
     setLoading(true);
     try {
       const res = await forgotPassword(email);
       if (res.message || !res.error) {
         setSent(true);
-        showToast('success', 'ជោគជ័យ', 'បានផ្ញើតំណកំណត់ពាក្យសម្ងាត់ឡើងវិញ');
+        showToast('success', 'Success', 'Reset password link sent');
       } else {
-        showToast('error', 'Error', res.error || 'មិនអាចដំណើរការបានទេ');
+        showToast('error', 'Error', res.error || 'Could not process request');
       }
     } catch (err: any) {
-      showToast('error', 'Error', err.message || 'មានបញ្ហាក្នុងការតភ្ជាប់');
+      showToast('error', 'Error', err.message || 'Connection error');
     } finally {
       setLoading(false);
     }
@@ -43,33 +43,33 @@ export default function ForgotPasswordPage() {
               </defs>
             </svg>
           </div>
-          <h1 className="font-serif text-[1.8rem] italic text-text-primary">ភ្លេចពាក្យសម្ងាត់</h1>
-          <p className="text-text-secondary text-[0.875rem] mt-1">បញ្ចូលអ៊ីមែលដើម្បីកំណត់ពាក្យសម្ងាត់ឡើងវិញ</p>
+          <h1 className="font-serif text-[1.8rem] italic text-text-primary">Forgot Password</h1>
+          <p className="text-text-secondary text-[0.875rem] mt-1">Enter your email to reset your password</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-bg-card/80 backdrop-blur-md border border-border rounded-2xl p-6 space-y-4">
           {sent ? (
             <div className="text-center py-4">
-              <p className="text-text-primary text-[0.9rem]">បានផ្ញើតំណកំណត់ពាក្យសម្ងាត់ឡើងវិញទៅកាន់</p>
+              <p className="text-text-primary text-[0.9rem]">Reset link sent to</p>
               <p className="text-accent-violet font-medium mt-1 text-[0.9rem]">{email}</p>
-              <p className="text-text-muted text-[0.75rem] mt-3">ពិនិត្យ Console សម្រាប់តំណ (សាកល្បង)</p>
+              <p className="text-text-muted text-[0.75rem] mt-3">Check console for reset link (testing)</p>
             </div>
           ) : (
             <>
               <div>
-                <label className="block text-[0.8rem] text-text-secondary mb-1.5 font-medium">អ៊ីមែល</label>
+                <label className="block text-[0.8rem] text-text-secondary mb-1.5 font-medium">Email</label>
                 <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                   placeholder="your@email.com"
                   className="w-full px-3.5 py-2.5 bg-bg-input border border-border rounded-xl text-text-primary font-main text-[0.9rem] outline-none transition-all focus:border-accent-violet focus:shadow-[0_0_0_3px_rgba(124,58,237,0.1)]" />
               </div>
               <button type="submit" disabled={loading}
                 className="w-full py-2.5 bg-accent-violet text-white font-semibold text-[0.9rem] rounded-xl border-none cursor-pointer transition-all hover:opacity-90 disabled:opacity-50">
-                {loading ? 'កំពុងដំណើរការ...' : 'ផ្ញើតំណកំណត់ឡើងវិញ'}
+                {loading ? 'Processing...' : 'Send Reset Link'}
               </button>
             </>
           )}
           <div className="text-center text-[0.8rem] text-text-secondary pt-2">
-            <Link href="/login" className="text-accent-violet hover:opacity-80 no-underline transition-opacity font-medium">ត្រឡប់ទៅចូលគណនី</Link>
+            <Link href="/login" className="text-accent-violet hover:opacity-80 no-underline transition-opacity font-medium">Back to Sign In</Link>
           </div>
         </form>
       </div>

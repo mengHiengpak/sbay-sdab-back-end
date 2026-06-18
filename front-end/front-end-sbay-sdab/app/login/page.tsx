@@ -8,7 +8,7 @@ import { useApp } from '@/context/AppContext';
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === 'string') return err;
-  return 'មានបញ្ហាក្នុងការតភ្ជាប់';
+  return 'Connection error';
 }
 
 export default function LoginPage() {
@@ -38,17 +38,17 @@ export default function LoginPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
-      showToast('error', 'Error', 'សូមបំពេញព័ត៌មានទាំងអស់');
+      showToast('error', 'Error', 'Please fill in all fields');
       return;
     }
     setLoading(true);
     try {
       const res = await login(email, password);
       if (res.success) {
-        showToast('success', 'ជោគជ័យ', 'ចូលគណនីបានជោគជ័យ');
+        showToast('success', 'Success', 'Logged in successfully');
         router.push('/');
       } else {
-        showToast('error', 'Error', res.error || 'អ៊ីមែល ឬ ពាក្យសម្ងាត់មិនត្រឹមត្រូវ');
+        showToast('error', 'Error', res.error || 'Invalid email or password');
       }
     } catch (err: unknown) {
       showToast('error', 'Error', getErrorMessage(err));
@@ -77,19 +77,19 @@ export default function LoginPage() {
               </defs>
             </svg>
           </div>
-          <h1 className="font-serif text-[1.8rem] italic text-text-primary">ចូលគណនី</h1>
-          <p className="text-text-secondary text-[0.875rem] mt-1">សូមបញ្ចូលព័ត៌មានគណនីរបស់អ្នក</p>
+          <h1 className="font-serif text-[1.8rem] italic text-text-primary">Sign In</h1>
+          <p className="text-text-secondary text-[0.875rem] mt-1">Please enter your account information</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-bg-card/80 backdrop-blur-md border border-border rounded-2xl p-6 space-y-4">
           <div>
-            <label className="block text-[0.8rem] text-text-secondary mb-1.5 font-medium">អ៊ីមែល</label>
+            <label className="block text-[0.8rem] text-text-secondary mb-1.5 font-medium">Email</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
               placeholder="your@email.com"
               className="w-full px-3.5 py-2.5 bg-bg-input border border-border rounded-xl text-text-primary font-main text-[0.9rem] outline-none transition-all focus:border-accent-violet focus:shadow-[0_0_0_3px_rgba(124,58,237,0.1)]" />
           </div>
           <div>
-            <label className="block text-[0.8rem] text-text-secondary mb-1.5 font-medium">ពាក្យសម្ងាត់</label>
+            <label className="block text-[0.8rem] text-text-secondary mb-1.5 font-medium">Password</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               className="w-full px-3.5 py-2.5 bg-bg-input border border-border rounded-xl text-text-primary font-main text-[0.9rem] outline-none transition-all focus:border-accent-violet focus:shadow-[0_0_0_3px_rgba(124,58,237,0.1)]" />
@@ -97,20 +97,20 @@ export default function LoginPage() {
           <div className="flex items-center justify-between text-[0.8rem]">
             <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
               <input type="checkbox" defaultChecked className="accent-accent-violet" />
-              ចងចាំគណនី
+              Remember me
             </label>
             <Link href="/forgot-password" className="text-accent-violet hover:opacity-80 no-underline transition-opacity">
-              ភ្លេចពាក្យសម្ងាត់?
+              Forgot password?
             </Link>
           </div>
           <button type="submit" disabled={loading}
             className="w-full py-2.5 bg-accent-violet text-white font-semibold text-[0.9rem] rounded-xl border-none cursor-pointer transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
-            {loading ? 'កំពុងចូល...' : 'ចូលគណនី'}
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
           <div className="text-center text-[0.8rem] text-text-secondary pt-2">
-            មិនទាន់មានគណនី?{' '}
+            Don't have an account?{' '}
             <Link href="/register" className="text-accent-violet hover:opacity-80 no-underline transition-opacity font-medium">
-              ចុះឈ្មោះ
+              Sign Up
             </Link>
           </div>
         </form>

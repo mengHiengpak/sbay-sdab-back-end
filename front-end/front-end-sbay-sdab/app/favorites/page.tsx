@@ -12,15 +12,15 @@ export default function FavoritesPage() {
   useEffect(() => { loadFavorites().then(setVideos); }, [loadFavorites]);
 
   const handlePlayVideo = (video: Video, queue: Video[], index: number) => {
-    if (!video.url || !video.isDownloaded) { showToast('error', 'Play Error', 'Video មិនទាន់ download ទេ'); return; }
+    if (!video.url || !video.isDownloaded) { showToast('error', 'Play Error', 'Video has not been downloaded yet'); return; }
     playVideo(video, queue, index);
   };
 
   return (
     <div className="animate-fade-in">
       <div className="mb-7">
-        <h1 className="font-serif text-[2rem] italic text-text-primary leading-[1.2]">សំណព្វ</h1>
-        <p className="text-text-secondary text-[0.875rem] mt-1">Video ដែលអ្នកចូលចិត្ត</p>
+        <h1 className="font-serif text-[2rem] italic text-text-primary leading-[1.2]">Favorites</h1>
+        <p className="text-text-secondary text-[0.875rem] mt-1">Videos you love</p>
       </div>
       <VideoGrid videos={videos} onPlayVideo={handlePlayVideo} />
     </div>

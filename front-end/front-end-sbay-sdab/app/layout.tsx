@@ -24,7 +24,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata = {
   title: 'Sbay Sdab — Video & Music Downloader',
-  description: 'ទាញ់យក និង Play Video/Music ពី Platform ទាំងអស់',
+  description: 'Download and Play Videos & Music from All Platforms',
 };
 
 export const viewport = {
@@ -33,7 +33,7 @@ export const viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="km" className={`${spaceGrotesk.variable} ${dmSerifDisplay.variable} ${jetbrainsMono.variable}`}>
+    <html lang="en" className={`${spaceGrotesk.variable} ${dmSerifDisplay.variable} ${jetbrainsMono.variable}`}>
       <body>
         <ClientShell>{children}</ClientShell>
       </body>

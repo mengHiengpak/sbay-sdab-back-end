@@ -15,12 +15,12 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { page: 'home', path: '/', label: 'ទំព័រដើម', svg: (
+  { page: 'home', path: '/', label: 'Home', svg: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[18px] h-[18px] shrink-0">
       <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
     </svg>
   )},
-  { page: 'library', path: '/library', label: 'បណ្ណាល័យ', svg: (
+  { page: 'library', path: '/library', label: 'Library', svg: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[18px] h-[18px] shrink-0">
       <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18M3 9h18" />
     </svg>
@@ -32,12 +32,12 @@ const navItems: NavItem[] = [
       <line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
     </svg>
   )},
-  { page: 'favorites', path: '/favorites', label: 'សំណព្វ', svg: (
+  { page: 'favorites', path: '/favorites', label: 'Favorites', svg: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[18px] h-[18px] shrink-0">
       <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
     </svg>
   )},
-  { page: 'downloads', path: '/downloads', label: 'ទាញ់យក', svg: (
+  { page: 'downloads', path: '/downloads', label: 'Downloads', svg: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[18px] h-[18px] shrink-0">
       <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
       <polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
@@ -55,14 +55,14 @@ export default function Sidebar() {
     const colors = ['#7c3aed', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#ef4444'];
     let selectedColor = colors[0];
     showModal(
-      'បង្កើត Playlist ថ្មី',
-      `<label class="block text-[0.8rem] text-text-secondary mb-1.5">ឈ្មោះ Playlist</label>
-      <input type="text" id="pl-name" class="w-full px-3.5 py-2.5 bg-bg-input border border-border rounded-xl text-text-primary font-main text-[0.9rem] outline-none transition-all mb-3 focus:border-accent-violet" placeholder="ចម្រៀងខ្មែរ...">
-      <label class="block text-[0.8rem] text-text-secondary mb-1.5">ពណ៌</label>
+      'Create New Playlist',
+      `<label class="block text-[0.8rem] text-text-secondary mb-1.5">Playlist Name</label>
+      <input type="text" id="pl-name" class="w-full px-3.5 py-2.5 bg-bg-input border border-border rounded-xl text-text-primary font-main text-[0.9rem] outline-none transition-all mb-3 focus:border-accent-violet" placeholder="My Playlist...">
+      <label class="block text-[0.8rem] text-text-secondary mb-1.5">Color</label>
       <div class="flex gap-2 flex-wrap" id="color-picker">
         ${colors.map(c => `<div class="color-dot" data-color="${c}" style="width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${c === colors[0] ? 'white' : 'transparent'};transition:all 0.2s"></div>`).join('')}
       </div>`,
-      [{ label: 'Cancel', action: 'close' }, { label: 'បង្កើត', action: 'submit', class: 'btn-primary' }],
+      [{ label: 'Cancel', action: 'close' }, { label: 'Create', action: 'submit', class: 'btn-primary' }],
       (name: string) => createPlaylist(name, '', selectedColor)
     );
     setTimeout(() => {
@@ -120,7 +120,7 @@ export default function Sidebar() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-          <span>Playlist ថ្មី</span>
+          <span>New Playlist</span>
         </button>
       </div>
       <div className="flex flex-col gap-[2px] mt-auto pt-3 border-t border-border">
@@ -142,7 +142,7 @@ export default function Sidebar() {
               <polyline points="16 17 21 12 16 7" />
               <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
-            <span>ចាកចេញ</span>
+            <span>Logout</span>
           </button>
         ) : (
           <Link href="/login" onClick={() => { if (window.innerWidth <= 768) dispatch({ type: 'SET_SIDEBAR', payload: false }); }}
@@ -153,7 +153,7 @@ export default function Sidebar() {
               <polyline points="10 17 15 12 10 7" />
               <line x1="15" y1="12" x2="3" y2="12" />
             </svg>
-            <span>ចូលគណនី</span>
+            <span>Sign In</span>
           </Link>
         )}
       </div>

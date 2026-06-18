@@ -8,7 +8,7 @@ import { useApp } from '@/context/AppContext';
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === 'string') return err;
-  return 'មានបញ្ហាក្នុងការតភ្ជាប់';
+  return 'Connection error';
 }
 
 export default function RegisterPage() {
@@ -40,25 +40,25 @@ export default function RegisterPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!username || !email || !password) {
-      showToast('error', 'Error', 'សូមបំពេញព័ត៌មានទាំងអស់');
+      showToast('error', 'Error', 'Please fill in all fields');
       return;
     }
     if (password !== confirmPassword) {
-      showToast('error', 'Error', 'ពាក្យសម្ងាត់មិនដូចគ្នាទេ');
+      showToast('error', 'Error', 'Passwords do not match');
       return;
     }
     if (password.length < 6) {
-      showToast('error', 'Error', 'ពាក្យសម្ងាត់ត្រូវមានយ៉ាងហោចណាស់ 6 តួអក្សរ');
+      showToast('error', 'Error', 'Password must be at least 6 characters');
       return;
     }
     setLoading(true);
     try {
       const res = await register(username, email, password);
       if (res.success) {
-        showToast('success', 'ជោគជ័យ', 'ចុះឈ្មោះគណនីបានជោគជ័យ');
+        showToast('success', 'Success', 'Account registered successfully');
         router.push('/');
       } else {
-        showToast('error', 'Error', res.error || 'មិនអាចចុះឈ្មោះបានទេ');
+        showToast('error', 'Error', res.error || 'Could not register');
       }
     } catch (err: unknown) {
       showToast('error', 'Error', getErrorMessage(err));
@@ -87,31 +87,31 @@ export default function RegisterPage() {
               </defs>
             </svg>
           </div>
-          <h1 className="font-serif text-[1.8rem] italic text-text-primary">ចុះឈ្មោះ</h1>
-          <p className="text-text-secondary text-[0.875rem] mt-1">បង្កើតគណនីថ្មី</p>
+          <h1 className="font-serif text-[1.8rem] italic text-text-primary">Sign Up</h1>
+          <p className="text-text-secondary text-[0.875rem] mt-1">Create a new account</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-bg-card/80 backdrop-blur-md border border-border rounded-2xl p-6 space-y-4">
           <div>
-            <label className="block text-[0.8rem] text-text-secondary mb-1.5 font-medium">ឈ្មោះអ្នកប្រើ</label>
+            <label className="block text-[0.8rem] text-text-secondary mb-1.5 font-medium">Username</label>
             <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
               placeholder="yourname"
               className="w-full px-3.5 py-2.5 bg-bg-input border border-border rounded-xl text-text-primary font-main text-[0.9rem] outline-none transition-all focus:border-accent-violet focus:shadow-[0_0_0_3px_rgba(124,58,237,0.1)]" />
           </div>
           <div>
-            <label className="block text-[0.8rem] text-text-secondary mb-1.5 font-medium">អ៊ីមែល</label>
+            <label className="block text-[0.8rem] text-text-secondary mb-1.5 font-medium">Email</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
               placeholder="your@email.com"
               className="w-full px-3.5 py-2.5 bg-bg-input border border-border rounded-xl text-text-primary font-main text-[0.9rem] outline-none transition-all focus:border-accent-violet focus:shadow-[0_0_0_3px_rgba(124,58,237,0.1)]" />
           </div>
           <div>
-            <label className="block text-[0.8rem] text-text-secondary mb-1.5 font-medium">ពាក្យសម្ងាត់</label>
+            <label className="block text-[0.8rem] text-text-secondary mb-1.5 font-medium">Password</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               className="w-full px-3.5 py-2.5 bg-bg-input border border-border rounded-xl text-text-primary font-main text-[0.9rem] outline-none transition-all focus:border-accent-violet focus:shadow-[0_0_0_3px_rgba(124,58,237,0.1)]" />
           </div>
           <div>
-            <label className="block text-[0.8rem] text-text-secondary mb-1.5 font-medium">បញ្ជាក់ពាក្យសម្ងាត់</label>
+            <label className="block text-[0.8rem] text-text-secondary mb-1.5 font-medium">Confirm Password</label>
             <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="••••••••"
               className="w-full px-3.5 py-2.5 bg-bg-input border border-border rounded-xl text-text-primary font-main text-[0.9rem] outline-none transition-all focus:border-accent-violet focus:shadow-[0_0_0_3px_rgba(124,58,237,0.1)]" />
@@ -119,13 +119,13 @@ export default function RegisterPage() {
 
           <button type="submit" disabled={loading}
             className="w-full py-2.5 bg-accent-violet text-white font-semibold text-[0.9rem] rounded-xl border-none cursor-pointer transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
-            {loading ? 'កំពុងចុះឈ្មោះ...' : 'ចុះឈ្មោះ'}
+            {loading ? 'Signing up...' : 'Sign Up'}
           </button>
 
           <div className="text-center text-[0.8rem] text-text-secondary pt-2">
-            មានគណនីរួចហើយ?{' '}
+            Already have an account?{' '}
             <Link href="/login" className="text-accent-violet hover:opacity-80 no-underline transition-opacity font-medium">
-              ចូលគណនី
+              Sign In
             </Link>
           </div>
         </form>

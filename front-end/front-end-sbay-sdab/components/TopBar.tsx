@@ -42,7 +42,7 @@ export default function TopBar() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">
             <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
-          <input type="text" onChange={handleSearch} placeholder="ស្វែងរក..."
+          <input type="text" onChange={handleSearch} placeholder="Search..."
             className="w-[280px] pl-9 pr-3 py-2 bg-bg-input border border-border rounded-xl text-text-primary font-main text-[0.85rem] outline-none transition-all focus:border-accent-violet focus:shadow-[0_0_0_3px_rgba(124,58,237,0.1)]" />
         </div>
       </div>
@@ -64,10 +64,10 @@ export default function TopBar() {
                 <p className="text-[0.85rem] text-text-primary font-medium">{user?.name}</p>
                 <p className="text-[0.7rem] text-text-muted">{user?.email}</p>
               </div>
-              <Link href="/library" className="block px-4 py-2 text-[0.85rem] text-text-secondary hover:text-text-primary hover:bg-surface no-underline transition-all">បណ្ណាល័យ</Link>
-              <Link href="/favorites" className="block px-4 py-2 text-[0.85rem] text-text-secondary hover:text-text-primary hover:bg-surface no-underline transition-all">សំណព្វ</Link>
+              <Link href="/library" className="block px-4 py-2 text-[0.85rem] text-text-secondary hover:text-text-primary hover:bg-surface no-underline transition-all">Library</Link>
+              <Link href="/favorites" className="block px-4 py-2 text-[0.85rem] text-text-secondary hover:text-text-primary hover:bg-surface no-underline transition-all">Favorites</Link>
               <button onClick={() => router.push('/login')}
-                className="w-full text-left px-4 py-2 text-[0.85rem] text-red-400 hover:bg-surface cursor-pointer bg-none border-none transition-all">ចាកចេញ</button>
+                className="w-full text-left px-4 py-2 text-[0.85rem] text-red-400 hover:bg-surface cursor-pointer bg-none border-none transition-all">Logout</button>
             </div>
           )}
         </div>
