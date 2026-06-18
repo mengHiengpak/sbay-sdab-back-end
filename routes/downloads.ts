@@ -313,7 +313,7 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
       '--extractor-retries', '10',
       '--throttled-rate', '100K',
       '--no-check-certificate',
-      '--js-runtimes', `deno,node:${process.execPath}`,
+      '--js-runtimes', `node:${process.execPath}`,
       '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
       ...getPlatformHeaders(platform),
       ...getPlatformExtractorArgs(platform),
@@ -531,14 +531,14 @@ async function startDownload(url: string, filePath: string, formatId: string, do
       '--extractor-retries', '5',
       '--throttled-rate', '100K',
       '--no-check-certificate',
-      '--js-runtimes', `deno,node:${process.execPath}`,
+      '--js-runtimes', `node:${process.execPath}`,
       '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
       ...getPlatformHeaders(platform),
       ...getPlatformExtractorArgs(platform),
       ...(await getCookieArgs(platform))
     ];
 
-      if (format === 'mp3' || format === 'm4a') {
+    if (format === 'mp3' || format === 'm4a') {
         if (hasFfmpeg()) {
           args.push('-x', '--audio-format', 'mp3', '--audio-quality', '5');
         } else {
