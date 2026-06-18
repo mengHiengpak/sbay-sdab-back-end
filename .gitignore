@@ -13,6 +13,6 @@ startup-error.log
 cookies.txt
 debug_json.mjs
 .next/
+out/
 *.err
-*.log
 tsconfig.tsbuildinfo

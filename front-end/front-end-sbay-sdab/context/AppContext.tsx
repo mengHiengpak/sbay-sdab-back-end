@@ -254,11 +254,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const token = API.getToken();
       const res = await API.post('/download/info', { url }, !!token);
       if (!res.success) throw new Error((res.error as string) || 'Failed');
-      const rd = res.data as any;
-      if (rd?._fallback && rd?._error) {
-        showToastRef.current('warning', 'Limited Results', 'Fetch failed: ' + String(rd._error).substring(0, 300));
-      }
-      dispatch({ type: 'SET_CURRENT_VIDEO_INFO', payload: { ...((rd as Record<string, unknown>) || {}), sourceUrl: url } });
+      dispatch({ type: 'SET_CURRENT_VIDEO_INFO', payload: { ...((res.data as any) || {}), sourceUrl: url } });
       dispatch({ type: 'SET_SELECTED_FORMAT', payload: (res.data as any)?.formats?.[0] || null });
       return res.data;
     } catch (err: any) {
