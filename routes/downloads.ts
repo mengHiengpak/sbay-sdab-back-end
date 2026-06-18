@@ -158,19 +158,52 @@ function parseISO8601(iso: string): number {
 }
 
 async function youtubeApiFallback(url: string): Promise<any | null> {
-  const apiKey = process.env.YOUTUBE_API_KEY;
-  if (!apiKey) return null;
   const videoId = parseYouTubeId(url);
   if (!videoId) return null;
+
+  const invidiousInstances = [
+    'https://inv.riverside.rocks',
+    'https://yt.artemislena.eu',
+    'https://invidious.jing.rocks',
+    'https://invidious.slipfox.xyz'
+  ];
+
+  for (const instance of invidiousInstances) {
+    try {
+      const res = await fetch(`${instance}/api/v1/videos/${videoId}`, {
+        signal: AbortSignal.timeout(5000),
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      });
+      if (!res.ok) continue;
+      const json: any = await res.json();
+      if (!json?.title) continue;
+      const durationSec = json.lengthSeconds || 0;
+      return {
+        title: json.title || 'Unknown Title',
+        thumbnail: json.thumbnailUrl || json.videoThumbnails?.[0]?.url || '',
+        duration: durationSec,
+        durationFormatted: formatDuration(durationSec),
+        platform: 'youtube',
+        author: json.author || json.channelName || 'Unknown',
+        description: (json.description || '').substring(0, 500),
+        viewCount: parseInt(json.viewCount || '0'),
+        formats: [
+          { id: 'best', quality: 'Auto', ext: 'mp4', type: 'video+audio', filesize: 0, filesizeFormatted: 'Auto' },
+          { id: 'bestvideo+bestaudio', quality: 'Auto', ext: 'mp4', type: 'video', filesize: 0, filesizeFormatted: 'Auto' },
+          { id: 'bestaudio', quality: '128kbps', ext: 'm4a', type: 'audio', filesize: 0, filesizeFormatted: 'Auto' }
+        ]
+      };
+    } catch { continue; }
+  }
+
+  const apiKey = process.env.YOUTUBE_API_KEY;
+  if (!apiKey) return null;
   try {
     const res = await fetch(
       `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${videoId}&key=${apiKey}`,
       { signal: AbortSignal.timeout(10000) }
     );
-    if (!res.ok) {
-      console.error('YouTube API error:', res.status, await res.text().catch(() => ''));
-      return null;
-    }
+    if (!res.ok) return null;
     const json: any = await res.json();
     const item = json?.items?.[0];
     if (!item) return null;
@@ -314,7 +347,7 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
     const errMsg = err?.stderr || err?.message || String(err);
     console.error('Info error for', url.substring(0, 80) + '...', errMsg);
 
-    if (detectPlatform(url) === 'youtube' && process.env.YOUTUBE_API_KEY) {
+    if (detectPlatform(url) === 'youtube') {
       const apiData = await youtubeApiFallback(url);
       if (apiData) {
         res.json({ success: true, data: { ...apiData, _fallback: true, _error: errMsg.substring(0, 2000) } });
