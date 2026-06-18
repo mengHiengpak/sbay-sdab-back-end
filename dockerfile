@@ -1,6 +1,8 @@
 FROM node:20-alpine
 
-RUN apk add --no-cache ffmpeg python3
+RUN apk add --no-cache ffmpeg python3 curl \
+  && curl -sL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
+  && chmod +x /usr/local/bin/yt-dlp
 
 WORKDIR /app
 

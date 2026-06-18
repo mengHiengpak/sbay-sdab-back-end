@@ -87,8 +87,9 @@ function getPlatformHeaders(platform: string): string[] {
 function getPlatformExtractorArgs(platform: string): string[] {
   if (platform === 'youtube') {
     return [
-      '--extractor-args', 'youtube:player_client=android,web',
-      '--extractor-args', 'youtube:include_dash_manifest=False'
+      '--extractor-args', 'youtube:player_client=android,web,ios,android_creator,ios_creator,web_creator,android_music,web_music,web_embedded',
+      '--extractor-args', 'youtube:include_dash_manifest=False',
+      '--extractor-args', 'youtube:player_skip=webpage,configs'
     ];
   }
   if (platform === 'facebook') {
