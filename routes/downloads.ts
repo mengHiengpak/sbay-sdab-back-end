@@ -87,9 +87,8 @@ function getPlatformHeaders(platform: string): string[] {
 function getPlatformExtractorArgs(platform: string): string[] {
   if (platform === 'youtube') {
     return [
-      '--extractor-args', 'youtube:player_client=android,web,ios,android_creator,ios_creator,web_creator,android_music,web_music,web_embedded',
-      '--extractor-args', 'youtube:include_dash_manifest=False',
-      '--extractor-args', 'youtube:player_skip=webpage,configs'
+      '--extractor-args', 'youtube:player_client=android,web',
+      '--extractor-args', 'youtube:include_dash_manifest=False'
     ];
   }
   if (platform === 'facebook') {
@@ -130,7 +129,7 @@ function formatSize(bytes: number): string {
 
 const YTDlpWrap = require('yt-dlp-wrap').default;
 
-async function getVideoInfoWithTimeout(ytDlp: any, args: string[], timeoutMs = 30000): Promise<any> {
+async function getVideoInfoWithTimeout(ytDlp: any, args: string[], timeoutMs = 60000): Promise<any> {
   return Promise.race([
     ytDlp.getVideoInfo(args),
     new Promise<any>((_, reject) =>
@@ -157,7 +156,7 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
     const platform = detectPlatform(url);
 
     const infoArgs: string[] = [
-      url, '--js-runtimes', 'node', '--sleep-requests', '2',
+      url, '--sleep-requests', '2',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--geo-bypass',
       '--retries', '5',
@@ -366,7 +365,7 @@ async function startDownload(url: string, filePath: string, formatId: string, do
 
     const args: string[] = [
       url, '-o', filePath, '--no-playlist', '--newline', '--no-mtime',
-      '--js-runtimes', 'node', '--sleep-requests', '2',
+      '--sleep-requests', '2',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--geo-bypass',
       '--retries', '10',

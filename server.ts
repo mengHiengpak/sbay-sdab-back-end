@@ -36,35 +36,39 @@ if (!fs.existsSync(downloadDir)) {
 
 async function ensureYtDlp(): Promise<void> {
   const YTDlpWrap = require('yt-dlp-wrap').default;
+  const { execSync } = require('child_process');
   const isWin = os.platform() === 'win32';
   const binName = isWin ? 'yt-dlp.exe' : 'yt-dlp';
+
+  const tryUse = async (nameOrPath: string): Promise<boolean> => {
+    try {
+      const ytDlp = new YTDlpWrap(nameOrPath);
+      await ytDlp.getVersion();
+      console.log('✅ yt-dlp found at', nameOrPath);
+      setYtDlpPath(nameOrPath);
+      return true;
+    } catch { return false; }
+  };
+
+  try {
+    const whichCmd = isWin ? 'where' : 'which';
+    const out = execSync(`${whichCmd} ${binName}`, { encoding: 'utf8', timeout: 5000 }).trim();
+    const pathBin = out.split(/\r?\n/)[0].trim();
+    if (pathBin && await tryUse(pathBin)) return;
+  } catch {}
+
   const isDist = __dirname.endsWith('dist');
   const binDir = path.join(__dirname, isDist ? '..' : '', 'bin');
   const ytDlpPath = path.join(binDir, binName);
 
-  if (fs.existsSync(ytDlpPath)) {
-    try {
-      const ytDlp = new YTDlpWrap(ytDlpPath);
-      await ytDlp.getVersion();
-      console.log('✅ yt-dlp found at', ytDlpPath);
-      setYtDlpPath(ytDlpPath);
-      try {
-        console.log('🔄 Updating yt-dlp...');
-        await ytDlp.update();
-        console.log('✅ yt-dlp updated to latest version');
-      } catch {
-        console.log('⚠️ yt-dlp update skipped (already latest or no internet)');
-      }
-      return;
-    } catch { }
-  }
+  if (fs.existsSync(ytDlpPath) && await tryUse(ytDlpPath)) return;
 
   console.log('📥 Downloading yt-dlp...');
   if (!fs.existsSync(binDir)) fs.mkdirSync(binDir, { recursive: true });
   try {
-    await YTDlpWrap.downloadFromGithub(ytDlpPath);
+    await YTDlpWrap.downloadFromGithub(ytDlpPath, '2026.06.09');
     if (!isWin) fs.chmodSync(ytDlpPath, 0o755);
-    setYtDlpPath(ytDlpPath);
+    await tryUse(ytDlpPath);
     console.log('✅ yt-dlp downloaded to', ytDlpPath);
   } catch (dlErr: any) {
     console.error('❌ Failed to download yt-dlp:', dlErr?.message || dlErr);
