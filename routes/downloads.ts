@@ -139,6 +139,65 @@ async function getVideoInfoWithTimeout(ytDlp: any, args: string[], timeoutMs = 6
   ]);
 }
 
+function parseYouTubeId(url: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
+    /^([a-zA-Z0-9_-]{11})$/
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+function parseISO8601(iso: string): number {
+  const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!m) return 0;
+  return (parseInt(m[1] || '0') * 3600) + (parseInt(m[2] || '0') * 60) + parseInt(m[3] || '0');
+}
+
+async function youtubeApiFallback(url: string): Promise<any | null> {
+  const apiKey = process.env.YOUTUBE_API_KEY;
+  if (!apiKey) return null;
+  const videoId = parseYouTubeId(url);
+  if (!videoId) return null;
+  try {
+    const res = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${videoId}&key=${apiKey}`,
+      { signal: AbortSignal.timeout(10000) }
+    );
+    if (!res.ok) {
+      console.error('YouTube API error:', res.status, await res.text().catch(() => ''));
+      return null;
+    }
+    const json: any = await res.json();
+    const item = json?.items?.[0];
+    if (!item) return null;
+    const snippet = item.snippet || {};
+    const stats = item.statistics || {};
+    const durationSec = parseISO8601(item.contentDetails?.duration || '');
+    return {
+      title: snippet.title || 'Unknown Title',
+      thumbnail: snippet.thumbnails?.maxres?.url || snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url || '',
+      duration: durationSec,
+      durationFormatted: formatDuration(durationSec),
+      platform: 'youtube',
+      author: snippet.channelTitle || 'Unknown',
+      description: (snippet.description || '').substring(0, 500),
+      viewCount: parseInt(stats.viewCount || '0'),
+      formats: [
+        { id: 'best', quality: 'Auto', ext: 'mp4', type: 'video+audio', filesize: 0, filesizeFormatted: 'Auto' },
+        { id: 'bestvideo+bestaudio', quality: 'Auto', ext: 'mp4', type: 'video', filesize: 0, filesizeFormatted: 'Auto' },
+        { id: 'bestaudio', quality: '128kbps', ext: 'm4a', type: 'audio', filesize: 0, filesizeFormatted: 'Auto' }
+      ]
+    };
+  } catch (e: any) {
+    console.error('YouTube API fallback error:', e?.message || e);
+    return null;
+  }
+}
+
 router.post('/info', async (req: Request, res: Response): Promise<void> => {
   const { url } = req.body;
   if (!url || typeof url !== 'string') {
@@ -254,6 +313,14 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
   } catch (err: any) {
     const errMsg = err?.stderr || err?.message || String(err);
     console.error('Info error for', url.substring(0, 80) + '...', errMsg);
+
+    if (detectPlatform(url) === 'youtube' && process.env.YOUTUBE_API_KEY) {
+      const apiData = await youtubeApiFallback(url);
+      if (apiData) {
+        res.json({ success: true, data: { ...apiData, _fallback: true, _error: errMsg.substring(0, 2000) } });
+        return;
+      }
+    }
 
     res.json({
       success: true,
