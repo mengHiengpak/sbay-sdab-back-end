@@ -243,70 +243,46 @@ async function youtubeApiFallback(url: string): Promise<any | null> {
   return null;
 }
 
-async function invidiousDownloadFallback(url: string, filePath: string, downloadId: string, format: string): Promise<boolean> {
-  const videoId = parseYouTubeId(url);
-  if (!videoId) return false;
-
-  const instances = [
-    'https://inv.riverside.rocks',
-    'https://yt.artemislena.eu',
-    'https://invidious.jing.rocks',
-    'https://invidious.slipfox.xyz',
-    'https://y.com.sb'
-  ];
-
+async function retryWithInvidious(url: string, filePath: string, downloadId: string, format: string, videoId: string, ytDlpPath: string): Promise<boolean> {
+  const vid = parseYouTubeId(url);
+  if (!vid) return false;
+  const ytDlp = new YTDlpWrap(ytDlpPath);
+  const instances = ['https://inv.riverside.rocks', 'https://yt.artemislena.eu', 'https://invidious.jing.rocks', 'https://invidious.slipfox.xyz', 'https://y.com.sb'];
   for (const instance of instances) {
     try {
-      const res = await fetch(`${instance}/api/v1/videos/${videoId}`, {
-        signal: AbortSignal.timeout(8000),
-        headers: { 'User-Agent': 'Mozilla/5.0' }
-      });
-      if (!res.ok) continue;
-      const json: any = await res.json();
-      if (!json?.title) continue;
-
-      let streamUrl = '';
-      const isAudio = format === 'mp3' || format === 'm4a';
-
-      if (isAudio) {
-        const audios: any[] = (json.adaptiveFormats || []).filter((s: any) => s.encoding?.includes('opus') || s.encoding?.includes('aac') || s.encoding?.includes('mp4a')).sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0));
-        streamUrl = audios[0]?.url || '';
+      const invidiousUrl = `${instance}/watch?v=${vid}`;
+      const args: string[] = [
+        invidiousUrl, '-o', filePath, '--no-playlist', '--newline', '--no-mtime',
+        '--no-check-certificate', '--retries', '5',
+        '--user-agent', 'Mozilla/5.0'
+      ];
+      if (format === 'mp3' || format === 'm4a') {
+        args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
       } else {
-        const combined: any[] = (json.formatStreams || []).sort((a: any, b: any) => (b.height || 0) - (a.height || 0));
-        streamUrl = combined[0]?.url || '';
-        if (!streamUrl) {
-          const videos: any[] = (json.adaptiveFormats || []).filter((s: any) => s.encoding?.includes('H264') || s.encoding?.includes('avc') || s.encoding?.includes('vp9')).sort((a: any, b: any) => (b.height || 0) - (a.height || 0));
-          streamUrl = videos[0]?.url || '';
-        }
+        args.push('-f', 'best[ext=mp4]/best');
       }
-      if (!streamUrl) continue;
-
       const dl = activeDownloads.get(downloadId);
       if (dl) dl.status = 'downloading';
-
-      const resp = await fetch(streamUrl, { signal: AbortSignal.timeout(300000) });
-      if (!resp.ok || !resp.body) continue;
-
-      const total = parseInt(resp.headers.get('content-length') || '0');
-      let loaded = 0;
-      const writer = fs.createWriteStream(filePath);
-      const reader = resp.body.getReader();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        writer.write(Buffer.from(value));
-        loaded += value.length;
-        if (total && dl) {
-          dl.progress = Math.round((loaded / total) * 100);
-        }
-      }
-      writer.end();
-
+      let emitter: any;
+      try { emitter = ytDlp.exec(args, {}); } catch { continue; }
+      emitter.on('progress', (p: any) => {
+        const d = activeDownloads.get(downloadId);
+        if (d && p.percent) { d.progress = Math.round(p.percent); d.speed = p.currentSpeed; d.eta = p.eta; }
+      });
+      await Promise.race([
+        new Promise<void>((resolve, reject) => {
+          emitter.on('close', () => resolve());
+          emitter.on('error', (err: Error) => reject(err));
+        }),
+        new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Invidious download timed out')), 600000))
+      ]);
       const d2 = activeDownloads.get(downloadId);
       if (d2) { d2.progress = 100; d2.status = 'completed'; }
       return true;
-    } catch { continue; }
+    } catch (e: any) {
+      console.log(`Invidious ${instance} failed:`, e.message);
+      continue;
+    }
   }
   return false;
 }
@@ -641,18 +617,24 @@ async function startDownload(url: string, filePath: string, formatId: string, do
     const dl = activeDownloads.get(downloadId);
     if (dl) { dl.status = 'error'; dl.error = err.message; }
 
-    if (detectPlatform(url) === 'youtube' && (err.message || '').includes('Sign in') || (err.stderr || '').includes('Sign in')) {
-      console.log('Trying Invidious download fallback for', url.substring(0, 60));
-      const ok = await invidiousDownloadFallback(url, filePath, downloadId, format);
+    if (detectPlatform(url) === 'youtube' && (err?.stderr || err?.message || '').includes('Sign in')) {
+      console.log('Trying Invidious URL fallback via yt-dlp for', url.substring(0, 60));
+      const ok = await retryWithInvidious(url, filePath, downloadId, format, videoId, getYtDlpPath()!);
       if (ok) {
-        await Video.findByIdAndUpdate(videoId, {
-          isDownloaded: true, downloadProgress: 100, fileSize: fs.statSync(filePath).size,
-          fileSizeFormatted: formatSize(fs.statSync(filePath).size)
-        });
+        try {
+          const stats = fs.statSync(filePath);
+          const compressed = await compressIfNeeded(filePath);
+          await Video.findByIdAndUpdate(videoId, {
+            isDownloaded: true, downloadProgress: 100, fileSize: stats.size,
+            fileSizeFormatted: formatSize(stats.size)
+          });
+        } catch {}
         const d2 = activeDownloads.get(downloadId);
         if (d2) { d2.progress = 100; d2.status = 'completed'; }
+        setTimeout(() => activeDownloads.delete(downloadId), 5 * 60 * 1000);
         return;
       }
+      console.log('All Invidious instances failed for download');
     }
 
     try {
