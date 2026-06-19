@@ -39,13 +39,6 @@ export interface User {
   phone?: string;
 }
 
-export interface DownloadEntry {
-  toastId: string;
-  videoId: string;
-  title: string;
-  status?: string;
-  progress?: number;
-}
 
 export interface Toast {
   id: string;

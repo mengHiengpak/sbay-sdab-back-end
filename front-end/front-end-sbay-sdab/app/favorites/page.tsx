@@ -12,7 +12,7 @@ export default function FavoritesPage() {
   useEffect(() => { loadFavorites().then(setVideos); }, [loadFavorites]);
 
   const handlePlayVideo = (video: Video, queue: Video[], index: number) => {
-    if (!video.url || !video.isDownloaded) { showToast('error', 'Play Error', 'Video has not been downloaded yet'); return; }
+    if (!video.url) { showToast('error', 'Play Error', 'Video URL not available'); return; }
     playVideo(video, queue, index);
   };
 

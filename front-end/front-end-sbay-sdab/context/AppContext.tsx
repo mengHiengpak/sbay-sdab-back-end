@@ -4,7 +4,7 @@ import { createContext, useContext, useReducer, useCallback, useEffect, useRef, 
 import { useRouter } from 'next/navigation';
 import API from '@/lib/api';
 import { getDemoVideos } from '@/lib/utils';
-import type { Video, Playlist, User, Toast, ModalData, ModalButton, DownloadEntry } from '@/lib/types';
+import type { Video, Playlist, User, Toast, ModalData, ModalButton } from '@/lib/types';
 
 interface AppState {
   user: User | null;
@@ -28,7 +28,6 @@ interface AppState {
   duration: number;
   volume: number;
   isMuted: boolean;
-  activeDownloads: Record<string, any>;
 }
 
 const initialState: AppState = {
@@ -53,7 +52,6 @@ const initialState: AppState = {
   duration: 0,
   volume: 0.7,
   isMuted: false,
-  activeDownloads: {},
 };
 
 type Action =
@@ -85,8 +83,7 @@ type Action =
   | { type: 'SET_MUTED'; payload: boolean }
   | { type: 'SET_USER'; payload: User | null }
   | { type: 'SET_AUTH_LOADING'; payload: boolean }
-  | { type: 'ADD_DOWNLOAD'; payload: { id: string; data: any } }
-  | { type: 'REMOVE_DOWNLOAD'; payload: string };
+;
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -149,12 +146,6 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, user: action.payload };
     case 'SET_AUTH_LOADING':
       return { ...state, isAuthLoading: action.payload };
-    case 'ADD_DOWNLOAD':
-      return { ...state, activeDownloads: { ...state.activeDownloads, [action.payload.id]: action.payload.data } };
-    case 'REMOVE_DOWNLOAD': {
-      const { [action.payload]: _, ...rest } = state.activeDownloads;
-      return { ...state, activeDownloads: rest };
-    }
     default:
       return state;
   }
@@ -172,7 +163,7 @@ interface AppContextValue {
   loadPlaylistsData: () => Promise<any[]>;
   createPlaylist: (name: string, description: string, color: string) => Promise<boolean>;
   analyzeUrl: (url: string) => Promise<any>;
-  startDownload: () => Promise<void>;
+  streamVideo: () => Promise<void>;
   playVideo: (video: any, queue?: any[], index?: number) => void;
   togglePlay: () => void;
   playNext: () => void;
@@ -184,7 +175,6 @@ interface AppContextValue {
   closeModal: () => void;
   handleTimeUpdate: (time: number) => void;
   getActiveMedia: () => HTMLMediaElement | null;
-  pollDownload: (downloadId: string, toastId: string, initialTitle?: string) => void;
   checkAuth: () => Promise<void>;
   login: (email: string, password: string) => Promise<any>;
   register: (name: string, email: string, password: string) => Promise<any>;
@@ -201,9 +191,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const activeMediaRef = useRef<HTMLMediaElement | null>(null);
-  const pollDownloadRef = useRef<(downloadId: string, toastId: string, initialTitle?: string) => void>(() => {});
   const playPrevRef = useRef<() => void>(() => {});
-  const pollDownloadFnRef = useRef<() => void>(() => {});
 
   const navigateTo = useCallback((page: string) => {
     const path = page === 'home' ? '/' : `/${page}`;
@@ -291,60 +279,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_MODAL', payload: { title, body, buttons, onSubmit } });
   }, []);
 
-  const startDownload = useCallback(async () => {
+  const streamVideo = useCallback(async () => {
     const info = state.currentVideoInfo;
     if (!info) return;
     const fmt = state.selectedFormat || { id: 'best', ext: 'mp4', quality: '720p', type: 'video' };
-    const toastId = showToastRef.current('downloading', (info.title as string)?.substring(0, 40), '0%', 0);
+    const toastId = showToastRef.current('downloading', 'Getting stream...', '0%', 0);
     try {
       const token = API.getToken();
-      const res = await API.post('/download/start', {
-        url: info.sourceUrl, formatId: fmt.id, quality: fmt.quality,
-        ext: fmt.ext, title: info.title, thumbnail: info.thumbnail,
-        duration: info.duration, durationFormatted: info.durationFormatted
+      const res = await API.post('/download/stream', {
+        url: info.sourceUrl, formatId: fmt.id
       }, !!token);
-      if (!res.success) throw new Error((res.error as string) || 'Download failed');
-      const { downloadId } = res.data as any || {};
-      if (!downloadId) throw new Error('Server did not return a download ID');
-      dispatch({ type: 'ADD_DOWNLOAD', payload: { id: downloadId, data: { toastId, videoId: (res.data as any)?.videoId, title: info.title, status: 'starting', progress: 0 } } });
-      pollDownloadRef.current(downloadId, toastId, info.title as string);
-    } catch (err: any) { updateToast(toastId, { type: 'error', title: 'Download Failed', subtitle: err.message }); }
-  }, [state.currentVideoInfo, state.selectedFormat, updateToast]);
-
-  const pollDownload = useCallback((downloadId: string, toastId: string, initialTitle?: string) => {
-    const interval = setInterval(async () => {
-      try {
-        const token = API.getToken();
-        const res = await API.get(`/download/progress/${downloadId}`, !!token);
-        const { status, progress, error } = res.data as any || {};
-        updateToast(toastId, { subtitle: `${progress}%`, progress });
-        const existing = state.activeDownloads[downloadId] as any || {};
-        dispatch({ type: 'ADD_DOWNLOAD', payload: { id: downloadId, data: { ...existing, status, progress, title: existing.title || initialTitle } } });
-        if (status === 'completed') {
-          clearInterval(interval);
-          updateToast(toastId, { type: 'success', title: 'Download successful! ✓', subtitle: '' });
-          setTimeout(() => { dispatch({ type: 'REMOVE_DOWNLOAD', payload: downloadId }); removeToast(toastId); }, 3000);
-        } else if (status === 'error') {
-          clearInterval(interval);
-          updateToast(toastId, { type: 'error', title: 'Download Failed', subtitle: error || 'Unknown error' });
-          dispatch({ type: 'REMOVE_DOWNLOAD', payload: downloadId });
-        }
-      } catch { clearInterval(interval); }
-    }, 1500);
-  }, [updateToast, removeToast, state.activeDownloads]);
-
-  pollDownloadRef.current = pollDownload;
+      if (!res.success) throw new Error((res.error as string) || 'Stream failed');
+      const data = res.data as any;
+      if (!data?.streamUrl) throw new Error('No stream URL returned');
+      updateToast(toastId, { type: 'success', title: 'Ready to play', subtitle: '' });
+      setTimeout(() => removeToast(toastId), 1500);
+      const videoObj = {
+        title: info.title,
+        url: data.streamUrl,
+        proxyUrl: data._fallback ? data.streamUrl : undefined,
+        thumbnail: info.thumbnail,
+        duration: info.duration,
+        durationFormatted: info.durationFormatted,
+        author: info.author,
+        sourceUrl: info.sourceUrl,
+        platform: data.platform,
+        isDownloaded: true
+      };
+      const media = videoRef.current || audioRef.current;
+      if (media) {
+        media.src = data.streamUrl;
+        media.crossOrigin = 'anonymous';
+        activeMediaRef.current = media;
+        await media.play();
+        dispatch({ type: 'SET_IS_PLAYING', payload: true });
+      }
+      dispatch({ type: 'SET_QUEUE', payload: [] });
+      dispatch({ type: 'SET_QUEUE_INDEX', payload: 0 });
+    } catch (err: any) {
+      updateToast(toastId, { type: 'error', title: 'Stream Failed', subtitle: err.message });
+    }
+  }, [state.currentVideoInfo, state.selectedFormat, updateToast, removeToast, audioRef, videoRef]);
 
   const playVideo = useCallback((video: any, queue: any[] = [], index = 0) => {
     dispatch({ type: 'SET_QUEUE', payload: queue });
     dispatch({ type: 'SET_QUEUE_INDEX', payload: index });
-    if (video.url && video.isDownloaded) {
-      const media = audioRef.current;
-      activeMediaRef.current = media;
-      if (media) {
-        media.src = video.url;
-        media.play().catch(() => {});
-      }
+    const media = videoRef.current || audioRef.current;
+    activeMediaRef.current = media;
+    if (media && video.url) {
+      media.src = video.url;
+      media.crossOrigin = 'anonymous';
+      media.play().catch(() => {});
       dispatch({ type: 'SET_IS_PLAYING', payload: true });
     }
   }, []);
@@ -446,10 +431,10 @@ dispatch({ type: 'SET_USER', payload: res.user as unknown as User });
   const value: AppContextValue = {
     state, dispatch, audioRef, videoRef, navigateTo,
     loadRecentVideos, loadLibrary: loadLibraryData, loadFavorites,
-    loadPlaylistsData, createPlaylist, analyzeUrl, startDownload,
+    loadPlaylistsData, createPlaylist, analyzeUrl, streamVideo,
     playVideo, togglePlay, playNext, playPrev,
     showToast: showToastFn, removeToast, updateToast, showModal, closeModal,
-    handleTimeUpdate, getActiveMedia, pollDownload,
+    handleTimeUpdate, getActiveMedia,
     checkAuth, login, register, logout, forgotPassword,
   };
 

@@ -9,6 +9,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import rateLimit from 'express-rate-limit';
+import { Readable } from 'stream';
 
 import authRoutes from './routes/auth';
 import videoRoutes from './routes/videos';
@@ -108,6 +109,28 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/', limiter);
 
 app.use('/downloads', express.static(path.resolve(downloadDir)));
+
+app.use('/api/proxy', async (req, res) => {
+  const targetUrl = req.query.url as string;
+  if (!targetUrl) return res.status(400).json({ error: 'url query param required' });
+  try {
+    const { hostname } = new URL(targetUrl);
+    if (!hostname.endsWith('googlevideo.com')) {
+      return res.status(403).json({ error: 'Host not allowed' });
+    }
+    const r = await fetch(targetUrl, { headers: { 'Range': req.headers.range || '' } });
+    if (r.headers.get('content-type')) res.setHeader('Content-Type', r.headers.get('content-type')!);
+    if (r.headers.get('content-length')) res.setHeader('Content-Length', r.headers.get('content-length')!);
+    if (r.headers.get('content-range')) res.setHeader('Content-Range', r.headers.get('content-range')!);
+    res.status(r.status);
+    if (r.body) {
+      const nodeStream = Readable.fromWeb(r.body as any);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch { res.status(502).json({ error: 'Proxy failed' }); }
+});
 
 const mongodbUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/streamvault';
 const hasAuthSource = mongodbUri.includes('authSource=');

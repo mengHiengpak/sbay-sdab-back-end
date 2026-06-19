@@ -2,25 +2,10 @@ import { Router, Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { v4 as uuidv4 } from 'uuid';
-import Video from '../models/Video';
 import Setting from '../models/Setting';
 import { getYtDlpPath } from '../config';
-import { compressIfNeeded } from '../utils/compress';
 
 const router = Router();
-
-interface ActiveDownload {
-  progress: number;
-  status: string;
-  videoId: string;
-  fileName: string;
-  speed?: string;
-  eta?: number;
-  error?: string;
-}
-
-const activeDownloads = new Map<string, ActiveDownload>();
 
 const _tmpCookieFiles: string[] = [];
 
@@ -248,50 +233,6 @@ async function youtubeApiFallback(url: string): Promise<any | null> {
   return null;
 }
 
-async function retryWithInvidious(url: string, filePath: string, downloadId: string, format: string, videoId: string, ytDlpPath: string): Promise<boolean> {
-  const vid = parseYouTubeId(url);
-  if (!vid) return false;
-  const ytDlp = new YTDlpWrap(ytDlpPath);
-  const instances = ['https://inv.riverside.rocks', 'https://yt.artemislena.eu', 'https://invidious.jing.rocks', 'https://invidious.slipfox.xyz', 'https://y.com.sb'];
-  for (const instance of instances) {
-    try {
-      const invidiousUrl = `${instance}/watch?v=${vid}`;
-      const args: string[] = [
-        invidiousUrl, '-o', filePath, '--no-playlist', '--newline', '--no-mtime',
-        '--no-check-certificate', '--retries', '5',
-        '--user-agent', 'Mozilla/5.0'
-      ];
-      if (format === 'mp3' || format === 'm4a') {
-        args.push('-x', '--audio-format', 'mp3', '--audio-quality', '5');
-      } else {
-        args.push('-f', 'best[ext=mp4]/best');
-      }
-      const dl = activeDownloads.get(downloadId);
-      if (dl) dl.status = 'downloading';
-      let emitter: any;
-      try { emitter = ytDlp.exec(args, {}); } catch { continue; }
-      emitter.on('progress', (p: any) => {
-        const d = activeDownloads.get(downloadId);
-        if (d && p.percent) { d.progress = Math.round(p.percent); d.speed = p.currentSpeed; d.eta = p.eta; }
-      });
-      await Promise.race([
-        new Promise<void>((resolve, reject) => {
-          emitter.on('close', () => resolve());
-          emitter.on('error', (err: Error) => reject(err));
-        }),
-        new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Invidious download timed out')), 600000))
-      ]);
-      const d2 = activeDownloads.get(downloadId);
-      if (d2) { d2.progress = 100; d2.status = 'completed'; }
-      return true;
-    } catch (e: any) {
-      console.log(`Invidious ${instance} failed:`, e.message);
-      continue;
-    }
-  }
-  return false;
-}
-
 router.post('/info', async (req: Request, res: Response): Promise<void> => {
   const { url } = req.body;
   if (!url || typeof url !== 'string') {
@@ -440,102 +381,25 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-router.post('/start', async (req: Request, res: Response): Promise<void> => {
-  const { url, formatId, quality, ext, title, thumbnail, playlistId, duration, durationFormatted } = req.body;
+router.post('/stream', async (req: Request, res: Response): Promise<void> => {
+  const { url, formatId } = req.body;
   if (!url || typeof url !== 'string') {
     res.status(400).json({ success: false, error: 'Valid URL is required' });
     return;
   }
 
-  if (!url.startsWith('http://') && !url.startsWith('https://')) {
-    res.status(400).json({ success: false, error: 'URL must start with http:// or https://' });
-    return;
-  }
-
-  const downloadId = uuidv4();
-  const platform = detectPlatform(url);
-  const format = ext || 'mp4';
-  const fileName = `${downloadId}.${format}`;
-  const downloadDir = process.env.DOWNLOAD_DIR || './downloads';
-  const filePath = path.join(downloadDir, fileName);
-
-  let video: any;
-  try {
-    video = await Video.create({
-      title: title || 'Downloading...',
-      url: `/downloads/${fileName}`,
-      sourceUrl: url,
-      platform,
-      thumbnail: thumbnail || '',
-      format,
-      quality: quality || 'best',
-      duration: duration || 0,
-      durationFormatted: durationFormatted || '0:00',
-      filePath,
-      isDownloaded: false,
-      downloadProgress: 0,
-      playlist: playlistId || null
-    });
-  } catch (dbErr) {
-    console.log('DB not available, continuing without save');
-    video = { _id: downloadId, title: title || 'Downloading...' };
-  }
-
-  activeDownloads.set(downloadId, {
-    progress: 0,
-    status: 'starting',
-    videoId: video._id,
-    fileName
-  });
-
-  startDownload(url, filePath, formatId || 'best', downloadId, video._id, format, quality || 'best');
-
-  res.json({
-    success: true,
-    data: {
-      downloadId,
-      videoId: video._id,
-      message: 'Download started'
-    }
-  });
-});
-
-let _ffmpegChecked = false;
-let _hasFfmpeg = false;
-
-function hasFfmpeg(): boolean {
-  if (_ffmpegChecked) return _hasFfmpeg;
-  _ffmpegChecked = true;
-  try {
-    require('child_process').execSync('ffmpeg -version', { stdio: 'ignore', timeout: 3000 });
-    _hasFfmpeg = true;
-  } catch {
-    _hasFfmpeg = false;
-  }
-  return _hasFfmpeg;
-}
-
-async function startDownload(url: string, filePath: string, formatId: string, downloadId: string, videoId: string, format: string, quality: string = 'best'): Promise<void> {
   try {
     const ytDlpPath = getYtDlpPath();
     if (!ytDlpPath) {
-      const dl = activeDownloads.get(downloadId);
-      if (dl) { dl.status = 'error'; dl.error = 'yt-dlp binary not found'; }
+      res.status(500).json({ success: false, error: 'yt-dlp binary not found' });
       return;
     }
-    const ytDlp = new YTDlpWrap(ytDlpPath);
 
     const platform = detectPlatform(url);
+    const { execSync } = require('child_process');
 
     const args: string[] = [
-      url, '-o', filePath, '--no-playlist', '--newline', '--no-mtime',
-      '--sleep-requests', '2',
-      '--js-runtimes', `node:${process.execPath}`,
-      '--add-header', 'Accept-Language:en-US,en;q=0.9',
-      '--geo-bypass',
-      '--retries', '10',
-      '--extractor-retries', '5',
-
+      url, '-g', '--no-playlist',
       '--no-check-certificate',
       '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
       ...getPlatformHeaders(platform),
@@ -543,148 +407,93 @@ async function startDownload(url: string, filePath: string, formatId: string, do
       ...(await getCookieArgs(platform))
     ];
 
-    if (format === 'mp3' || format === 'm4a') {
-        if (hasFfmpeg()) {
-          args.push('-x', '--audio-format', 'mp3', '--audio-quality', '5');
-        } else {
-          args.push('-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio');
-        }
-      } else {
-        const ffmpegAvail = hasFfmpeg();
-        if (ffmpegAvail) {
-          args.push('-f', `${formatId}+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio/best[ext=mp4]/best`);
-          args.push('--merge-output-format', 'mp4');
-        } else {
-          args.push('-f', `${formatId}/best[ext=mp4]/best`);
-        }
+    if (formatId && formatId !== 'best' && formatId !== 'bestvideo+bestaudio') {
+      args.push('-f', formatId);
+    } else {
+      args.push('-f', 'best[ext=mp4]/best');
     }
 
-    args.push('--allow-unplayable-formats');
+    const cmd = `"${ytDlpPath}" ${args.map(a => {
+      if (a.includes(' ') || a.includes('"')) return `"${a.replace(/"/g, '\\"')}"`;
+      return a;
+    }).join(' ')}`;
 
-    const download = activeDownloads.get(downloadId);
-    if (download) download.status = 'downloading';
+    const output = execSync(cmd, { encoding: 'utf8', timeout: 60000 }).toString().trim();
+    const lines = output.split('\n').filter((l: string) => l.startsWith('http'));
+    const streamUrl = lines[0];
 
-    let emitter: any;
-    try {
-      emitter = ytDlp.exec(args, {});
-    } catch (spawnErr: any) {
-      const dl = activeDownloads.get(downloadId);
-      if (dl) { dl.status = 'error'; dl.error = 'Failed to launch yt-dlp: ' + (spawnErr.message || 'spawn error'); }
+    if (!streamUrl) {
+      res.status(500).json({ success: false, error: 'Could not retrieve stream URL' });
       return;
     }
-    emitter.on('progress', (progress: any) => {
-      const dl = activeDownloads.get(downloadId);
-      if (dl && progress.percent) {
-        dl.progress = Math.round(progress.percent);
-        dl.speed = progress.currentSpeed;
-        dl.eta = progress.eta;
-      }
+
+    res.json({
+      success: true,
+      data: { streamUrl, platform }
     });
-    await Promise.race([
-      new Promise<void>((resolve, reject) => {
-        emitter.on('close', () => resolve());
-        emitter.on('error', (err: Error) => reject(err));
-      }),
-      new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Download timed out')), 600000))
-    ]);
-
-    try {
-      const compressed = await compressIfNeeded(filePath);
-      const stats = fs.statSync(filePath);
-
-      let probeDuration = 0;
-      try {
-        const { execSync } = require('child_process');
-        const probeOut = execSync(
-          `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}"`,
-          { timeout: 10000, encoding: 'utf8' }
-        );
-        probeDuration = Math.round(parseFloat(probeOut.trim()));
-      } catch {}
-
-      await Video.findByIdAndUpdate(videoId, {
-        isDownloaded: true,
-        downloadProgress: 100,
-        fileSize: stats.size,
-        fileSizeFormatted: formatSize(stats.size),
-        duration: probeDuration || 0,
-        durationFormatted: formatDuration(probeDuration),
-        quality: compressed ? `${quality} (compressed)` : quality,
-        url: `/downloads/${path.basename(filePath)}`
-      });
-    } catch (e) { /* DB might not be available */ }
-
-    const dl = activeDownloads.get(downloadId);
-    if (dl) { dl.progress = 100; dl.status = 'completed'; }
-
-    setTimeout(() => activeDownloads.delete(downloadId), 5 * 60 * 1000);
-
   } catch (err: any) {
-    console.error('Download error:', err.message);
-    const dl = activeDownloads.get(downloadId);
-    if (dl) { dl.status = 'error'; dl.error = err.message; }
+    const errMsg = err?.stderr || err?.message || String(err);
+    console.error('Stream error:', errMsg.substring(0, 500));
 
-    const errText = err?.stderr || err?.message || '';
-    if (detectPlatform(url) === 'youtube' && errText.includes('format is not available') && !formatId.startsWith('best')) {
-      console.log('Requested format not available, retrying with best format');
-      const ytDlpPath = getYtDlpPath();
-      if (ytDlpPath) {
-        await startDownload(url, filePath, 'best', downloadId, videoId, format, quality);
-        return;
-      }
+    if (detectPlatform(url) === 'youtube') {
+      try {
+        const ytdl = require('@distube/ytdl-core');
+        const info = await ytdl.getInfo(url);
+        const format = ytdl.chooseFormat(info.formats, { quality: formatId && formatId !== 'best' ? formatId : 'highest' });
+        if (format?.url) {
+          res.json({ success: true, data: { streamUrl: format.url, platform: 'youtube', _fallback: true } });
+          return;
+        }
+      } catch {}
     }
 
-    if (detectPlatform(url) === 'youtube' && errText.includes('Sign in')) {
-      console.log('Trying Invidious URL fallback via yt-dlp for', url.substring(0, 60));
-      const ok = await retryWithInvidious(url, filePath, downloadId, format, videoId, getYtDlpPath()!);
-      if (ok) {
-        try {
-          const stats = fs.statSync(filePath);
-          const compressed = await compressIfNeeded(filePath);
-          await Video.findByIdAndUpdate(videoId, {
-            isDownloaded: true, downloadProgress: 100, fileSize: stats.size,
-            fileSizeFormatted: formatSize(stats.size)
-          });
-        } catch {}
-        const d2 = activeDownloads.get(downloadId);
-        if (d2) { d2.progress = 100; d2.status = 'completed'; }
-        setTimeout(() => activeDownloads.delete(downloadId), 5 * 60 * 1000);
-        return;
-      }
-      console.log('All Invidious instances failed for download');
-    }
-
-    try {
-      await Video.findByIdAndUpdate(videoId, { downloadProgress: -1 });
-    } catch (e) { /* ignore */ }
+    res.status(500).json({ success: false, error: errMsg.substring(0, 2000) });
   }
-}
-
-router.get('/progress/:downloadId', (req: Request, res: Response): void => {
-  const dl = activeDownloads.get(req.params.downloadId as string);
-  if (!dl) {
-    res.json({ success: true, data: { status: 'not_found', progress: 0 } });
-    return;
-  }
-  res.json({
-    success: true,
-    data: {
-      status: dl.status,
-      progress: dl.progress,
-      speed: dl.speed,
-      eta: dl.eta,
-      videoId: dl.videoId,
-      error: dl.error
-    }
-  });
 });
 
-router.get('/active', (req: Request, res: Response): void => {
-  const downloads: any[] = [];
-  activeDownloads.forEach((value, key) => {
-    downloads.push({ downloadId: key, ...value });
-  });
-  res.json({ success: true, data: downloads });
+router.get('/proxy', async (req: Request, res: Response): Promise<void> => {
+  const url = req.query.url as string;
+  if (!url) {
+    res.status(400).json({ success: false, error: 'URL query parameter is required' });
+    return;
+  }
+
+  try {
+    const ytdl = require('@distube/ytdl-core');
+    const platform = detectPlatform(url);
+
+    if (platform !== 'youtube') {
+      res.status(400).json({ success: false, error: 'Proxy only supports YouTube URLs' });
+      return;
+    }
+
+    const formatId = (req.query.format as string) || 'highest';
+
+    const stream = ytdl(url, {
+      quality: formatId === 'highest' ? 'highest' : formatId,
+      filter: 'audioandvideo'
+    });
+
+    stream.on('info', (info: any, format: any) => {
+      const mimeType = format.mimeType?.split(';')[0] || 'video/mp4';
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Accept-Ranges', 'bytes');
+    });
+
+    stream.on('error', (err: Error) => {
+      console.error('Proxy stream error:', err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, error: err.message });
+      }
+    });
+
+    stream.pipe(res);
+  } catch (err: any) {
+    console.error('Proxy error:', err.message);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
 });
 
 router.post('/cookies', async (req: Request, res: Response): Promise<void> => {
