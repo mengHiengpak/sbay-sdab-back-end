@@ -381,32 +381,7 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-async function loadCookieHeader(platform: string = 'youtube'): Promise<string | null> {
-  try {
-    const doc = await Setting.findOne({ key: `${platform}_cookies` });
-    if (!doc?.value) return null;
-    const ageHours = (Date.now() - new Date(doc.updatedAt || doc.createdAt).getTime()) / (1000 * 60 * 60);
-    if (ageHours > 24) {
-      console.log(`⚠️ ${platform} cookies are ${Math.round(ageHours)}h old, skipping`);
-      return null;
-    }
-    const lines = doc.value.split('\n');
-    const cookies: string[] = [];
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
-      const parts = trimmed.split('\t');
-      if (parts.length >= 7) {
-        const name = parts[parts.length - 2]?.trim();
-        const value = parts[parts.length - 1]?.trim();
-        if (name && value) cookies.push(`${encodeURIComponent(name)}=${encodeURIComponent(value)}`);
-      }
-    }
-    return cookies.length > 0 ? cookies.join('; ') : null;
-  } catch {
-    return null;
-  }
-}
+
 
 router.post('/stream', async (req: Request, res: Response): Promise<void> => {
   const { url } = req.body;
@@ -415,35 +390,47 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  if (detectPlatform(url) !== 'youtube') {
-    res.status(400).json({ success: false, error: 'Only YouTube URLs are supported for streaming' });
+  const platform = detectPlatform(url);
+  if (platform !== 'youtube') {
+    res.status(400).json({ success: false, error: 'Only YouTube supported' });
+    return;
+  }
+
+  const ytDlpPath = getYtDlpPath();
+  if (!ytDlpPath) {
+    res.status(500).json({ success: false, error: 'yt-dlp not found' });
     return;
   }
 
   try {
-    const ytdl = require('@distube/ytdl-core');
-    const cookieHeader = await loadCookieHeader();
-    const headers: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    };
-    if (cookieHeader) headers['Cookie'] = cookieHeader;
+    const { execFileSync } = require('child_process');
+    const cookieArgs = await getCookieArgs(platform);
+    const args: string[] = [
+      url, '-g', '--no-playlist',
+      '--js-runtimes', `node:${process.execPath}`,
+      '--geo-bypass', '--force-ipv4',
+      '--no-check-certificate',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      ...cookieArgs,
+      ...getPlatformHeaders(platform),
+      ...getPlatformExtractorArgs(platform),
+      '-f', 'best[ext=mp4]/best',
+    ];
 
-    const info = await ytdl.getInfo(url, { requestOptions: { headers } });
-    const fmt = ytdl.chooseFormat(info.formats, { quality: 'highestvideo', filter: 'audioandvideo' });
-    const streamUrl = fmt?.url || info.formats.find((f: any) => f.url)?.url;
+    const out = execFileSync(ytDlpPath, args, { encoding: 'utf8', timeout: 60000 }).toString().trim();
+    const lines = out.split('\n').filter((l: string) => l.trim());
+    const streamUrl = lines.find((l: string) => l.startsWith('http'));
 
     if (!streamUrl) {
-      res.status(500).json({ success: false, error: 'No playable format found' });
+      res.status(500).json({ success: false, error: 'yt-dlp returned no URL' });
       return;
     }
 
-    res.json({ success: true, data: { streamUrl, platform: 'youtube' } });
+    res.json({ success: true, data: { streamUrl, platform } });
   } catch (e: any) {
-    const msg = e?.message || String(e);
-    console.error('Stream error:', msg.substring(0, 500));
-    const noCookies = !(await loadCookieHeader().catch(() => null));
-    const hint = noCookies ? ' — Go to the Cookies page in the sidebar to paste your YouTube cookies' : '';
-    res.status(500).json({ success: false, error: (msg + hint).substring(0, 2000) });
+    const msg = (e.stderr || e.message || String(e)).substring(0, 2000);
+    console.error('Stream error:', msg);
+    res.status(500).json({ success: false, error: msg });
   }
 });
 
@@ -453,40 +440,60 @@ router.get('/proxy', async (req: Request, res: Response): Promise<void> => {
     res.status(400).json({ success: false, error: 'url query param required' });
     return;
   }
-  if (detectPlatform(sourceUrl) !== 'youtube') {
+
+  const platform = detectPlatform(sourceUrl);
+  if (platform !== 'youtube') {
     res.status(400).json({ success: false, error: 'Only YouTube supported' });
     return;
   }
 
+  const ytDlpPath = getYtDlpPath();
+  if (!ytDlpPath) {
+    res.status(500).json({ success: false, error: 'yt-dlp not found' });
+    return;
+  }
+
   try {
-    const ytdl = require('@distube/ytdl-core');
-    const cookieHeader = await loadCookieHeader();
-    const headers: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    };
-    if (cookieHeader) headers['Cookie'] = cookieHeader;
+    const { spawn } = require('child_process');
+    const cookieArgs = await getCookieArgs(platform);
+    const args: string[] = [
+      sourceUrl, '-o', '-', '--no-playlist',
+      '--js-runtimes', `node:${process.execPath}`,
+      '--geo-bypass', '--force-ipv4',
+      '--no-check-certificate',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      ...cookieArgs,
+      ...getPlatformHeaders(platform),
+      ...getPlatformExtractorArgs(platform),
+      '-f', 'best[ext=mp4]/best',
+    ];
 
-    const stream = ytdl(sourceUrl, {
-      quality: 'highestvideo',
-      filter: 'audioandvideo',
-      requestOptions: { headers }
+    const proc = spawn(ytDlpPath, args);
+    let errored = false;
+
+    proc.stderr.on('data', (data: Buffer) => {
+      const s = data.toString();
+      if (s.includes('ERROR')) console.error('yt-dlp proxy error:', s);
     });
 
-    stream.on('info', (info: any, format: any) => {
-      const mimeType = format.mimeType?.split(';')[0] || 'video/mp4';
-      res.setHeader('Content-Type', mimeType);
-      res.setHeader('Accept-Ranges', 'bytes');
-    });
-
-    stream.on('error', (err: Error) => {
-      console.error('Proxy stream error:', err.message);
+    proc.on('error', (err: Error) => {
+      errored = true;
+      console.error('Proxy spawn error:', err.message);
       if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
     });
 
-    stream.pipe(res);
+    proc.on('close', (code: number | null) => {
+      if (!errored && code !== 0 && !res.headersSent) {
+        res.status(500).json({ success: false, error: `yt-dlp exited with code ${code}` });
+      }
+    });
+
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Accept-Ranges', 'bytes');
+    proc.stdout.pipe(res);
   } catch (err: any) {
     console.error('Proxy error:', err.message);
-    if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
+    if (!res.headersSent) res.status(502).json({ success: false, error: err.message });
   }
 });
 
