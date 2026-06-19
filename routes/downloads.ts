@@ -381,34 +381,6 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-async function getYtDlpStreamUrl(url: string): Promise<string | null> {
-  const ytDlpPath = getYtDlpPath();
-  if (!ytDlpPath) return null;
-
-  const platform = detectPlatform(url);
-  const { execFileSync } = require('child_process');
-
-  const args: string[] = [
-    url, '-g', '--no-playlist',
-    '--js-runtimes', `node:${process.execPath}`,
-    '--geo-bypass', '--force-ipv4',
-    '--no-check-certificate',
-    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    ...getPlatformHeaders(platform),
-    ...getPlatformExtractorArgs(platform),
-    '-f', 'best[ext=mp4]/best',
-  ];
-
-  try {
-    const out = execFileSync(ytDlpPath, args, { encoding: 'utf8', timeout: 60000 }).toString().trim();
-    const line = out.split('\n').find((l: string) => l.startsWith('http'));
-    return line || null;
-  } catch (e: any) {
-    console.log('yt-dlp -g error:', (e.stderr || e.message || '').toString().substring(0, 400));
-    return null;
-  }
-}
-
 router.post('/stream', async (req: Request, res: Response): Promise<void> => {
   const { url } = req.body;
   if (!url || typeof url !== 'string') {
@@ -416,39 +388,9 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const platform = detectPlatform(url);
-  const errs: string[] = [];
-
-  const ytDlpPath = getYtDlpPath();
-  if (!ytDlpPath) {
-    res.status(500).json({ success: false, error: 'yt-dlp binary not found on server' });
+  if (detectPlatform(url) !== 'youtube') {
+    res.status(400).json({ success: false, error: 'Only YouTube URLs are supported for streaming' });
     return;
-  }
-
-  try {
-    const { execFileSync } = require('child_process');
-    const args: string[] = [
-      url, '-g', '--no-playlist',
-      '--js-runtimes', `node:${process.execPath}`,
-      '--geo-bypass', '--force-ipv4',
-      '--no-check-certificate',
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      ...getPlatformHeaders(platform),
-      ...getPlatformExtractorArgs(platform),
-      '-f', 'best[ext=mp4]/best',
-    ];
-    const out = execFileSync(ytDlpPath, args, { encoding: 'utf8', timeout: 60000 }).toString().trim();
-    const lines = out.split('\n').filter((l: string) => l.trim());
-    const streamUrl = lines.find((l: string) => l.startsWith('http'));
-    if (streamUrl) {
-      res.json({ success: true, data: { streamUrl, platform } });
-      return;
-    }
-    errs.push('yt-dlp -g returned no URL. Raw output: ' + out.substring(0, 200));
-  } catch (e: any) {
-    const msg = (e.stderr || e.message || '').toString().substring(0, 500);
-    console.error('yt-dlp -g error:', msg);
-    errs.push('yt-dlp -g: ' + msg);
   }
 
   try {
@@ -458,40 +400,21 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
       }
     });
-    const f = ytdl.chooseFormat(info.formats, { quality: 'highestvideo', filter: 'audioandvideo' });
-    let streamUrl = f?.url || info.formats.find((f: any) => f.url)?.url || null;
-    if (streamUrl) {
-      res.json({ success: true, data: { streamUrl, platform, _fallback: 'ytdl-core' } });
+
+    const fmt = ytdl.chooseFormat(info.formats, { quality: 'highestvideo', filter: 'audioandvideo' });
+    const streamUrl = fmt?.url || info.formats.find((f: any) => f.url)?.url;
+
+    if (!streamUrl) {
+      res.status(500).json({ success: false, error: 'No playable format found' });
       return;
     }
-    errs.push('ytdl-core found 0 formats with URLs');
+
+    res.json({ success: true, data: { streamUrl, platform: 'youtube' } });
   } catch (e: any) {
-    errs.push('ytdl-core: ' + (e?.message || '').substring(0, 200));
+    const msg = e?.message || String(e);
+    console.error('Stream error:', msg.substring(0, 500));
+    res.status(500).json({ success: false, error: msg.substring(0, 2000) });
   }
-
-  const videoId = parseYouTubeId(url);
-  if (videoId) {
-    for (const instance of ['https://inv.riverside.rocks', 'https://yt.artemislena.eu', 'https://invidious.jing.rocks']) {
-      try {
-        const apiRes = await fetch(`${instance}/api/v1/videos/${videoId}`, {
-          signal: AbortSignal.timeout(5000),
-          headers: { 'User-Agent': 'Mozilla/5.0' }
-        });
-        if (!apiRes.ok) continue;
-        const json: any = await apiRes.json();
-        const all: any[] = [...(json?.formatStream || []), ...(json?.adaptiveFormats || [])];
-        const u = all.find((f: any) => f.url)?.url;
-        if (u) {
-          res.json({ success: true, data: { streamUrl: u, platform, _fallback: 'invidious' } });
-          return;
-        }
-      } catch { continue; }
-    }
-    errs.push('Invidious: all instances returned no URLs');
-  }
-
-  console.error('All stream methods failed:', errs);
-  res.status(500).json({ success: false, error: 'Could not retrieve stream URL', details: errs });
 });
 
 router.get('/proxy', async (req: Request, res: Response): Promise<void> => {
@@ -505,37 +428,31 @@ router.get('/proxy', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const streamUrl = await getYtDlpStreamUrl(sourceUrl);
-  if (!streamUrl) {
-    res.status(500).json({ success: false, error: 'Could not get stream URL' });
-    return;
-  }
-
   try {
-    const range = req.headers.range;
-    const headers: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    };
-    if (range) headers['Range'] = range;
+    const ytdl = require('@distube/ytdl-core');
+    const stream = ytdl(sourceUrl, {
+      quality: 'highestvideo',
+      filter: 'audioandvideo',
+      requestOptions: {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      }
+    });
 
-    const proxyRes = await fetch(streamUrl, { headers });
+    stream.on('info', (info: any, format: any) => {
+      const mimeType = format.mimeType?.split(';')[0] || 'video/mp4';
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Accept-Ranges', 'bytes');
+    });
 
-        if (proxyRes.headers.get('content-type')) res.setHeader('Content-Type', proxyRes.headers.get('content-type')!);
-        if (proxyRes.headers.get('content-length')) res.setHeader('Content-Length', proxyRes.headers.get('content-length')!);
-        if (proxyRes.headers.get('content-range')) res.setHeader('Content-Range', proxyRes.headers.get('content-range')!);
-        if (proxyRes.headers.get('accept-ranges')) res.setHeader('Accept-Ranges', proxyRes.headers.get('accept-ranges')!);
+    stream.on('error', (err: Error) => {
+      console.error('Proxy stream error:', err.message);
+      if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
+    });
 
-        res.status(proxyRes.status);
-
-        if (proxyRes.body) {
-          const nodeStream = require('stream').Readable.fromWeb(proxyRes.body);
-          nodeStream.pipe(res);
-        } else {
-          res.end();
-        }
+    stream.pipe(res);
   } catch (err: any) {
     console.error('Proxy error:', err.message);
-    if (!res.headersSent) res.status(502).json({ success: false, error: err.message });
+    if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
   }
 });
 
