@@ -437,11 +437,13 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    res.json({ success: true, data: { streamUrl, platform: 'youtube', _cookies: !!cookieHeader } });
+    res.json({ success: true, data: { streamUrl, platform: 'youtube' } });
   } catch (e: any) {
     const msg = e?.message || String(e);
     console.error('Stream error:', msg.substring(0, 500));
-    res.status(500).json({ success: false, error: msg.substring(0, 2000) });
+    const noCookies = !(await loadCookieHeader().catch(() => null));
+    const hint = noCookies ? ' — Go to the Cookies page in the sidebar to paste your YouTube cookies' : '';
+    res.status(500).json({ success: false, error: (msg + hint).substring(0, 2000) });
   }
 });
 
