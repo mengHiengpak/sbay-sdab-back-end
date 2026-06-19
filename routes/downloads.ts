@@ -383,6 +383,25 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
 
 
 
+async function runYtDlp(url: string, extraArgs: string[] = []): Promise<string | null> {
+  const ytDlpPath = getYtDlpPath();
+  if (!ytDlpPath) return null;
+  try {
+    const { execFileSync } = require('child_process');
+    const args: string[] = [
+      url, '-g', '--no-playlist',
+      '--js-runtimes', `node:${process.execPath}`,
+      '--geo-bypass', '--force-ipv4',
+      '--no-check-certificate',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      ...extraArgs,
+      '-f', 'best[ext=mp4]/best',
+    ];
+    const out = execFileSync(ytDlpPath, args, { encoding: 'utf8', timeout: 60000 }).toString().trim();
+    return out.split('\n').find((l: string) => l.startsWith('http')) || null;
+  } catch { return null; }
+}
+
 router.post('/stream', async (req: Request, res: Response): Promise<void> => {
   const { url } = req.body;
   if (!url || typeof url !== 'string') {
@@ -396,42 +415,70 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const ytDlpPath = getYtDlpPath();
-  if (!ytDlpPath) {
-    res.status(500).json({ success: false, error: 'yt-dlp not found' });
-    return;
-  }
+  let streamUrl: string | null = null;
+  const errors: string[] = [];
 
+  // Strategy 1: yt-dlp with cookies + web_embedded
+  const cookieArgs = await getCookieArgs(platform);
+  streamUrl = await runYtDlp(url, [
+    ...cookieArgs,
+    ...getPlatformHeaders(platform),
+    '--extractor-args', 'youtube:player_client=web_embedded;player_skip=webpage,js',
+  ]);
+  if (streamUrl) { res.json({ success: true, data: { streamUrl, platform } }); return; }
+  errors.push('cookies+embedded failed');
+
+  // Strategy 2: yt-dlp without cookies, android client
+  streamUrl = await runYtDlp(url, [
+    ...getPlatformHeaders(platform),
+    '--extractor-args', 'youtube:player_client=android;player_skip=webpage,js',
+  ]);
+  if (streamUrl) { res.json({ success: true, data: { streamUrl, platform, _auth: 'android' } }); return; }
+  errors.push('android failed');
+
+  // Strategy 3: yt-dlp without cookies, tv_embedded client
+  streamUrl = await runYtDlp(url, [
+    ...getPlatformHeaders(platform),
+    '--extractor-args', 'youtube:player_client=tv_embedded;player_skip=webpage,js',
+  ]);
+  if (streamUrl) { res.json({ success: true, data: { streamUrl, platform, _auth: 'tv' } }); return; }
+  errors.push('tv_embedded failed');
+
+  // Strategy 4: ytdl-core (no cookies)
   try {
-    const { execFileSync } = require('child_process');
-    const cookieArgs = await getCookieArgs(platform);
-    const args: string[] = [
-      url, '-g', '--no-playlist',
-      '--js-runtimes', `node:${process.execPath}`,
-      '--geo-bypass', '--force-ipv4',
-      '--no-check-certificate',
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      ...cookieArgs,
-      ...getPlatformHeaders(platform),
-      ...getPlatformExtractorArgs(platform),
-      '-f', 'best[ext=mp4]/best',
-    ];
+    const ytdl = require('@distube/ytdl-core');
+    const info = await ytdl.getInfo(url, {
+      requestOptions: {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      }
+    });
+    const fmt = ytdl.chooseFormat(info.formats, { quality: 'highestvideo', filter: 'audioandvideo' });
+    streamUrl = fmt?.url || info.formats.find((f: any) => f.url)?.url;
+    if (streamUrl) { res.json({ success: true, data: { streamUrl, platform, _auth: 'ytdl-core' } }); return; }
+    errors.push('ytdl-core: no url');
+  } catch (e: any) { errors.push('ytdl-core: ' + (e?.message || '').substring(0, 100)); }
 
-    const out = execFileSync(ytDlpPath, args, { encoding: 'utf8', timeout: 60000 }).toString().trim();
-    const lines = out.split('\n').filter((l: string) => l.trim());
-    const streamUrl = lines.find((l: string) => l.startsWith('http'));
-
-    if (!streamUrl) {
-      res.status(500).json({ success: false, error: 'yt-dlp returned no URL' });
-      return;
+  // Strategy 5: Invidious API
+  const videoId = parseYouTubeId(url);
+  if (videoId) {
+    for (const instance of ['https://inv.riverside.rocks', 'https://yt.artemislena.eu', 'https://invidious.jing.rocks']) {
+      try {
+        const apiRes = await fetch(`${instance}/api/v1/videos/${videoId}`, {
+          signal: AbortSignal.timeout(5000),
+          headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
+        if (!apiRes.ok) continue;
+        const json: any = await apiRes.json();
+        const all: any[] = [...(json?.formatStream || []), ...(json?.adaptiveFormats || [])];
+        const u = all.find((f: any) => f.url)?.url;
+        if (u) { res.json({ success: true, data: { streamUrl: u, platform, _auth: 'invidious' } }); return; }
+      } catch { continue; }
     }
-
-    res.json({ success: true, data: { streamUrl, platform } });
-  } catch (e: any) {
-    const msg = (e.stderr || e.message || String(e)).substring(0, 2000);
-    console.error('Stream error:', msg);
-    res.status(500).json({ success: false, error: msg });
+    errors.push('invidious: no url from any instance');
   }
+
+  console.error('All stream strategies failed:', errors);
+  res.status(500).json({ success: false, error: 'All methods failed', details: errors });
 });
 
 router.get('/proxy', async (req: Request, res: Response): Promise<void> => {
@@ -453,23 +500,39 @@ router.get('/proxy', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  const cookieArgs = await getCookieArgs(platform);
+  const strategyArgs = [
+    [...cookieArgs, ...getPlatformHeaders(platform), '--extractor-args', 'youtube:player_client=web_embedded;player_skip=webpage,js'],
+    [...getPlatformHeaders(platform), '--extractor-args', 'youtube:player_client=android;player_skip=webpage,js'],
+    [...getPlatformHeaders(platform), '--extractor-args', 'youtube:player_client=tv_embedded;player_skip=webpage,js'],
+  ];
+
+  // Find a working strategy first (using -g)
+  let workingArgs: string[] | null = null;
+  for (const args of strategyArgs) {
+    const url = await runYtDlp(sourceUrl, args);
+    if (url) { workingArgs = args; break; }
+  }
+
+  if (!workingArgs) {
+    res.status(500).json({ success: false, error: 'No working strategy found' });
+    return;
+  }
+
+  // Spawn with the working strategy
   try {
     const { spawn } = require('child_process');
-    const cookieArgs = await getCookieArgs(platform);
     const args: string[] = [
       sourceUrl, '-o', '-', '--no-playlist',
       '--js-runtimes', `node:${process.execPath}`,
       '--geo-bypass', '--force-ipv4',
       '--no-check-certificate',
       '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      ...cookieArgs,
-      ...getPlatformHeaders(platform),
-      ...getPlatformExtractorArgs(platform),
+      ...workingArgs,
       '-f', 'best[ext=mp4]/best',
     ];
 
     const proc = spawn(ytDlpPath, args);
-    let errored = false;
 
     proc.stderr.on('data', (data: Buffer) => {
       const s = data.toString();
@@ -477,14 +540,13 @@ router.get('/proxy', async (req: Request, res: Response): Promise<void> => {
     });
 
     proc.on('error', (err: Error) => {
-      errored = true;
       console.error('Proxy spawn error:', err.message);
       if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
     });
 
     proc.on('close', (code: number | null) => {
-      if (!errored && code !== 0 && !res.headersSent) {
-        res.status(500).json({ success: false, error: `yt-dlp exited with code ${code}` });
+      if (code !== 0 && !res.headersSent) {
+        res.status(500).json({ success: false, error: `yt-dlp exited code ${code}` });
       }
     });
 
