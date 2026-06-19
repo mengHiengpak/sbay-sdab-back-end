@@ -289,7 +289,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const res = await API.post('/download/stream', {
         url: info.sourceUrl, formatId: fmt.id
       }, !!token);
-      if (!res.success) throw new Error((res.error as string) || 'Stream failed');
+      if (!res.success) throw new Error(((res.error as string) || 'Stream failed') + ((res as any).details ? ' | ' + (res as any).details.join(' | ') : ''));
       const data = res.data as any;
       if (!data?.streamUrl) throw new Error('No stream URL returned');
       updateToast(toastId, { type: 'success', title: 'Ready to play', subtitle: '' });
