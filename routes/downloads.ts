@@ -450,7 +450,7 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
 
   // Fallback: yt-dlp with cookies
   const cookieArgs = await getCookieArgs(platform);
-  for (const playerClient of ['web_embedded', 'android', 'tv_embedded']) {
+  for (const playerClient of ['web_embedded', 'android']) {
     try {
       const { execFileSync } = require('child_process');
       const ytDlpPath = getYtDlpPath();
@@ -471,7 +471,11 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
       if (su) { res.json({ success: true, data: { streamUrl: su, platform, _fallback: 'yt-dlp' } }); return; }
       errors.push(`yt-dlp[${playerClient}]: no url`);
     } catch (e: any) {
-      errors.push(`yt-dlp[${playerClient}]: ` + ((e as any).stderr || (e as any).message || '').substring(0, 120));
+      const stderr = ((e.stderr || e.message || '') as string).substring(0, 200);
+      const stdout = ((e.stdout || '') as string).trim();
+      const su = stdout.split('\n').find((l: string) => l.startsWith('http'));
+      if (su) { res.json({ success: true, data: { streamUrl: su, platform, _fallback: 'yt-dlp' } }); return; }
+      errors.push(`yt-dlp[${playerClient}]: ${stderr || 'exit code ' + (e.status || '?')}`);
     }
   }
 
@@ -534,23 +538,29 @@ router.get('/proxy', async (req: Request, res: Response): Promise<void> => {
     const ytDlpPath = getYtDlpPath();
     if (ytDlpPath) {
       const cookieArgs = await getCookieArgs(platform);
-      for (const pc of ['web_embedded', 'android', 'tv_embedded']) {
-        try {
-          const { execFileSync } = require('child_process');
-          const out = execFileSync(ytDlpPath, [
-            sourceUrl, '-g', '--no-playlist',
-            '--js-runtimes', `node:${process.execPath}`,
-            '--geo-bypass', '--force-ipv4',
-            '--no-check-certificate',
-            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            ...cookieArgs,
-            ...getPlatformHeaders(platform),
-            '--extractor-args', `youtube:player_client=${pc};player_skip=webpage,js`,
-            '-f', 'best[ext=mp4]/best',
-          ], { encoding: 'utf8', timeout: 30000 }).toString().trim();
-          const u = out.split('\n').find((l: string) => l.startsWith('http'));
-          if (u) { streamUrl = u; break; }
-        } catch { continue; }
+      for (const pc of ['web_embedded', 'android']) {
+          try {
+            const { execFileSync } = require('child_process');
+            try {
+              const out = execFileSync(ytDlpPath, [
+                sourceUrl, '-g', '--no-playlist',
+                '--js-runtimes', `node:${process.execPath}`,
+                '--geo-bypass', '--force-ipv4',
+                '--no-check-certificate',
+                '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                ...cookieArgs,
+                ...getPlatformHeaders(platform),
+                '--extractor-args', `youtube:player_client=${pc};player_skip=webpage,js`,
+                '-f', 'best[ext=mp4]/best',
+              ], { encoding: 'utf8', timeout: 30000 }).toString().trim();
+              const u = out.split('\n').find((l: string) => l.startsWith('http'));
+              if (u) { streamUrl = u; break; }
+            } catch (e2: any) {
+              const stdout = ((e2.stdout || '') as string).trim();
+              const u = stdout.split('\n').find((l: string) => l.startsWith('http'));
+              if (u) { streamUrl = u; break; }
+            }
+          } catch { continue; }
       }
     }
   }
