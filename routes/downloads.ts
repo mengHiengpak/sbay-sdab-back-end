@@ -86,11 +86,16 @@ function getPlatformHeaders(platform: string): string[] {
 
 function getPlatformExtractorArgs(platform: string): string[] {
   if (platform === 'youtube') {
-    return [
-      '--extractor-args', 'youtube:player_client=android,web,ios,android_creator,ios_creator,web_creator,android_music,web_music,web_embedded',
-      '--extractor-args', 'youtube:include_dash_manifest=False',
-      '--extractor-args', 'youtube:player_skip=webpage,configs'
+    const args: string[] = [
+      '--extractor-args', 'youtube:player_client=android',
+      '--extractor-args', 'youtube:include_dash_manifest=True',
+      '--extractor-args', 'youtube:player_skip=webpage'
     ];
+    const dataSyncId = process.env.YOUTUBE_DATA_SYNC_ID;
+    if (dataSyncId) {
+      args.push('--extractor-args', `youtube:data_sync_id=${dataSyncId}`);
+    }
+    return args;
   }
   if (platform === 'facebook') {
     return ['--extractor-args', 'facebook:shorts_disabled=True'];
@@ -306,6 +311,7 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
 
     const infoArgs: string[] = [
       url, '--sleep-requests', '2',
+      '--js-interpreter', process.execPath,
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--geo-bypass',
       '--force-ipv4',
@@ -524,6 +530,7 @@ async function startDownload(url: string, filePath: string, formatId: string, do
     const args: string[] = [
       url, '-o', filePath, '--no-playlist', '--newline', '--no-mtime',
       '--sleep-requests', '2',
+      '--js-interpreter', process.execPath,
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--geo-bypass',
       '--retries', '10',
@@ -551,6 +558,8 @@ async function startDownload(url: string, filePath: string, formatId: string, do
           args.push('-f', `${formatId}/best[ext=mp4]/best`);
         }
     }
+
+    args.push('--allow-unplayable-formats');
 
     const download = activeDownloads.get(downloadId);
     if (download) download.status = 'downloading';
@@ -615,7 +624,17 @@ async function startDownload(url: string, filePath: string, formatId: string, do
     const dl = activeDownloads.get(downloadId);
     if (dl) { dl.status = 'error'; dl.error = err.message; }
 
-    if (detectPlatform(url) === 'youtube' && (err?.stderr || err?.message || '').includes('Sign in')) {
+    const errText = err?.stderr || err?.message || '';
+    if (detectPlatform(url) === 'youtube' && errText.includes('format is not available') && !formatId.startsWith('best')) {
+      console.log('Requested format not available, retrying with best format');
+      const ytDlpPath = getYtDlpPath();
+      if (ytDlpPath) {
+        await startDownload(url, filePath, 'best', downloadId, videoId, format, quality);
+        return;
+      }
+    }
+
+    if (detectPlatform(url) === 'youtube' && errText.includes('Sign in')) {
       console.log('Trying Invidious URL fallback via yt-dlp for', url.substring(0, 60));
       const ok = await retryWithInvidious(url, filePath, downloadId, format, videoId, getYtDlpPath()!);
       if (ok) {
