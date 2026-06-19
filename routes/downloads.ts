@@ -391,7 +391,14 @@ async function getYtDlpStreamUrl(url: string, formatId: string, withCookies: boo
     const platform = detectPlatform(url);
 
     const args: string[] = [
-      url, '--no-playlist', '--no-check-certificate',
+      url, '--no-playlist',
+      '--sleep-requests', '2',
+      '--js-runtimes', `node:${process.execPath}`,
+      '--geo-bypass',
+      '--force-ipv4',
+      '--retries', '10',
+      '--extractor-retries', '10',
+      '--no-check-certificate',
       '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
       ...getPlatformHeaders(platform),
       ...getPlatformExtractorArgs(platform),
@@ -405,20 +412,20 @@ async function getYtDlpStreamUrl(url: string, formatId: string, withCookies: boo
     const info = await getVideoInfoWithTimeout(ytDlp, args, 60000);
     if (!info?.formats?.length) return null;
 
-    const fmt = formatId && formatId !== 'best'
-      ? info.formats.find((f: any) => f.format_id === formatId || f.format_note === formatId)
+    const exact = formatId && formatId !== 'best' && formatId !== 'bestvideo+bestaudio'
+      ? info.formats.find((f: any) => f.format_id === formatId)
       : null;
-    if (fmt?.url) return fmt.url;
+    if (exact?.url) return exact.url;
 
-    const videoFormats = info.formats
+    const withBoth = info.formats
       .filter((f: any) => f.url && f.vcodec !== 'none' && f.acodec !== 'none')
       .sort((a: any, b: any) => (b.height || 0) - (a.height || 0));
-    if (videoFormats.length > 0 && videoFormats[0].url) return videoFormats[0].url;
+    if (withBoth.length > 0 && withBoth[0].url) return withBoth[0].url;
 
-    const anyWithUrl = info.formats.find((f: any) => f.url);
-    return anyWithUrl?.url || null;
+    const anyUrl = info.formats.find((f: any) => f.url);
+    return anyUrl?.url || null;
   } catch (e: any) {
-    console.log(`yt-dlp stream (cookies=${withCookies}):`, (e?.stderr || e?.message || String(e)).substring(0, 200));
+    console.log(`yt-dlp stream (cookies=${withCookies}):`, (e?.stderr || e?.message || String(e)).substring(0, 300));
     return null;
   }
 }
