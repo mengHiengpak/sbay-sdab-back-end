@@ -1,16 +1,15 @@
 'use client';
 
 import { useRef, useCallback, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import API from '@/lib/api';
 
 export default function TopBar() {
-  const { state, dispatch, showToast } = useApp();
+  const { state, dispatch, showToast, logout } = useApp();
   const { sidebarOpen, user } = state;
   const pathname = usePathname();
-  const router = useRouter();
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -66,7 +65,7 @@ export default function TopBar() {
               </div>
               <Link href="/library" className="block px-4 py-2 text-[0.85rem] text-text-secondary hover:text-text-primary hover:bg-surface no-underline transition-all">Library</Link>
               <Link href="/favorites" className="block px-4 py-2 text-[0.85rem] text-text-secondary hover:text-text-primary hover:bg-surface no-underline transition-all">Favorites</Link>
-              <button onClick={() => router.push('/login')}
+              <button onClick={() => logout()}
                 className="w-full text-left px-4 py-2 text-[0.85rem] text-red-400 hover:bg-surface cursor-pointer bg-none border-none transition-all">Logout</button>
             </div>
           )}
