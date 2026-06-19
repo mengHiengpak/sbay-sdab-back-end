@@ -417,15 +417,39 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
   }
 
   const platform = detectPlatform(url);
-  let streamUrl: string | null = null;
-  const errors: string[] = [];
+  const errs: string[] = [];
 
-  streamUrl = await getYtDlpStreamUrl(url);
-  if (streamUrl) {
-    res.json({ success: true, data: { streamUrl, platform } });
+  const ytDlpPath = getYtDlpPath();
+  if (!ytDlpPath) {
+    res.status(500).json({ success: false, error: 'yt-dlp binary not found on server' });
     return;
   }
-  errors.push('yt-dlp -g failed');
+
+  try {
+    const { execFileSync } = require('child_process');
+    const args: string[] = [
+      url, '-g', '--no-playlist',
+      '--js-runtimes', `node:${process.execPath}`,
+      '--geo-bypass', '--force-ipv4',
+      '--no-check-certificate',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      ...getPlatformHeaders(platform),
+      ...getPlatformExtractorArgs(platform),
+      '-f', 'best[ext=mp4]/best',
+    ];
+    const out = execFileSync(ytDlpPath, args, { encoding: 'utf8', timeout: 60000 }).toString().trim();
+    const lines = out.split('\n').filter((l: string) => l.trim());
+    const streamUrl = lines.find((l: string) => l.startsWith('http'));
+    if (streamUrl) {
+      res.json({ success: true, data: { streamUrl, platform } });
+      return;
+    }
+    errs.push('yt-dlp -g returned no URL. Raw output: ' + out.substring(0, 200));
+  } catch (e: any) {
+    const msg = (e.stderr || e.message || '').toString().substring(0, 500);
+    console.error('yt-dlp -g error:', msg);
+    errs.push('yt-dlp -g: ' + msg);
+  }
 
   try {
     const ytdl = require('@distube/ytdl-core');
@@ -435,20 +459,15 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
       }
     });
     const f = ytdl.chooseFormat(info.formats, { quality: 'highestvideo', filter: 'audioandvideo' });
-    if (f?.url) streamUrl = f.url;
-    if (!streamUrl) {
-      const any = info.formats.find((f: any) => f.url);
-      if (any?.url) streamUrl = any.url;
+    let streamUrl = f?.url || info.formats.find((f: any) => f.url)?.url || null;
+    if (streamUrl) {
+      res.json({ success: true, data: { streamUrl, platform, _fallback: 'ytdl-core' } });
+      return;
     }
+    errs.push('ytdl-core found 0 formats with URLs');
   } catch (e: any) {
-    console.log('ytdl-core error:', e?.message?.substring(0, 300));
+    errs.push('ytdl-core: ' + (e?.message || '').substring(0, 200));
   }
-
-  if (streamUrl) {
-    res.json({ success: true, data: { streamUrl, platform, _fallback: 'ytdl-core' } });
-    return;
-  }
-  errors.push('ytdl-core failed');
 
   const videoId = parseYouTubeId(url);
   if (videoId) {
@@ -461,20 +480,18 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
         if (!apiRes.ok) continue;
         const json: any = await apiRes.json();
         const all: any[] = [...(json?.formatStream || []), ...(json?.adaptiveFormats || [])];
-        const first = all.find((f: any) => f.url);
-        if (first?.url) { streamUrl = first.url; break; }
+        const u = all.find((f: any) => f.url)?.url;
+        if (u) {
+          res.json({ success: true, data: { streamUrl: u, platform, _fallback: 'invidious' } });
+          return;
+        }
       } catch { continue; }
     }
+    errs.push('Invidious: all instances returned no URLs');
   }
 
-  if (streamUrl) {
-    res.json({ success: true, data: { streamUrl, platform, _fallback: 'invidious' } });
-    return;
-  }
-  errors.push('Invidious failed');
-
-  console.error('All stream methods failed for', url.substring(0, 80), errors.join('; '));
-  res.status(500).json({ success: false, error: 'Could not retrieve stream URL. Tried: ' + errors.join(', ') });
+  console.error('All stream methods failed:', errs);
+  res.status(500).json({ success: false, error: 'Could not retrieve stream URL', details: errs });
 });
 
 router.get('/proxy', async (req: Request, res: Response): Promise<void> => {
