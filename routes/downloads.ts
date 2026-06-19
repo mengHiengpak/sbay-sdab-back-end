@@ -317,7 +317,7 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
       '--force-ipv4',
       '--retries', '10',
       '--extractor-retries', '10',
-      '--throttled-rate', '100K',
+
       '--no-check-certificate',
       '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
       ...getPlatformHeaders(platform),
@@ -535,7 +535,7 @@ async function startDownload(url: string, filePath: string, formatId: string, do
       '--geo-bypass',
       '--retries', '10',
       '--extractor-retries', '5',
-      '--throttled-rate', '100K',
+
       '--no-check-certificate',
       '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
       ...getPlatformHeaders(platform),
