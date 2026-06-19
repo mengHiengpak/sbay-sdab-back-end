@@ -294,10 +294,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!data?.streamUrl) throw new Error('No stream URL returned');
       updateToast(toastId, { type: 'success', title: 'Ready to play', subtitle: '' });
       setTimeout(() => removeToast(toastId), 1500);
+      const proxyUrl = `/api/download/proxy?url=${encodeURIComponent(info.sourceUrl as string)}`;
       const videoObj = {
         title: info.title,
-        url: data.streamUrl,
-        proxyUrl: data._fallback ? data.streamUrl : undefined,
+        url: proxyUrl,
+        proxyUrl,
         thumbnail: info.thumbnail,
         duration: info.duration,
         durationFormatted: info.durationFormatted,
@@ -308,7 +309,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
       const media = videoRef.current || audioRef.current;
       if (media) {
-        media.src = data.streamUrl;
+        media.src = proxyUrl;
         media.crossOrigin = 'anonymous';
         activeMediaRef.current = media;
         await media.play();

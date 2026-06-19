@@ -385,35 +385,40 @@ async function getYtDlpStreamUrl(url: string, formatId: string, withCookies: boo
   const ytDlpPath = getYtDlpPath();
   if (!ytDlpPath) return null;
 
-  const platform = detectPlatform(url);
-  const { execFileSync } = require('child_process');
-
-  const args: string[] = [
-    url, '-g', '--no-playlist',
-    '--no-check-certificate',
-    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-    ...getPlatformHeaders(platform),
-    ...getPlatformExtractorArgs(platform),
-    '-f', 'best[ext=mp4]/best',
-  ];
-
-  if (formatId && formatId !== 'best' && formatId !== 'bestvideo+bestaudio') {
-    args[args.length - 1] = '-f';
-    args.push(formatId);
-  }
-
-  if (withCookies) {
-    const cookieArgs = await getCookieArgs(platform);
-    if (cookieArgs.length > 0) args.push(...cookieArgs);
-  }
-
   try {
-    const output = execFileSync(ytDlpPath, args, { encoding: 'utf8', timeout: 30000 }).toString().trim();
-    const lines = output.split('\n').filter((l: string) => l.startsWith('http'));
-    return lines[0] || null;
+    const YTDlpWrap = require('yt-dlp-wrap').default;
+    const ytDlp = new YTDlpWrap(ytDlpPath);
+    const platform = detectPlatform(url);
+
+    const args: string[] = [
+      url, '--no-playlist', '--no-check-certificate',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      ...getPlatformHeaders(platform),
+      ...getPlatformExtractorArgs(platform),
+    ];
+
+    if (withCookies) {
+      const cookieArgs = await getCookieArgs(platform);
+      if (cookieArgs.length > 0) args.push(...cookieArgs);
+    }
+
+    const info = await getVideoInfoWithTimeout(ytDlp, args, 60000);
+    if (!info?.formats?.length) return null;
+
+    const fmt = formatId && formatId !== 'best'
+      ? info.formats.find((f: any) => f.format_id === formatId || f.format_note === formatId)
+      : null;
+    if (fmt?.url) return fmt.url;
+
+    const videoFormats = info.formats
+      .filter((f: any) => f.url && f.vcodec !== 'none' && f.acodec !== 'none')
+      .sort((a: any, b: any) => (b.height || 0) - (a.height || 0));
+    if (videoFormats.length > 0 && videoFormats[0].url) return videoFormats[0].url;
+
+    const anyWithUrl = info.formats.find((f: any) => f.url);
+    return anyWithUrl?.url || null;
   } catch (e: any) {
-    const msg = e?.stderr?.toString() || e?.message || String(e);
-    console.log(`yt-dlp -g (cookies=${withCookies}):`, msg.substring(0, 200));
+    console.log(`yt-dlp stream (cookies=${withCookies}):`, (e?.stderr || e?.message || String(e)).substring(0, 200));
     return null;
   }
 }
@@ -426,10 +431,10 @@ async function getYtdlCoreStreamUrl(url: string): Promise<string | null> {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' }
       }
     });
-    const format = ytdl.chooseFormat(info.formats, { quality: 'highest' });
-    if (format?.url) return format.url;
-    const lastResort = info.formats.find((f: any) => f.url);
-    return lastResort?.url || null;
+    const best = ytdl.chooseFormat(info.formats, { quality: 'highestvideo', filter: 'audioandvideo' });
+    if (best?.url) return best.url;
+    const any = info.formats.find((f: any) => f.url);
+    return any?.url || null;
   } catch (e: any) {
     console.log('ytdl-core:', e?.message?.substring(0, 200) || 'failed');
     return null;
@@ -440,15 +445,7 @@ async function getInvidiousStreamUrl(url: string): Promise<string | null> {
   const videoId = parseYouTubeId(url);
   if (!videoId) return null;
 
-  const instances = [
-    'https://inv.riverside.rocks',
-    'https://yt.artemislena.eu',
-    'https://invidious.jing.rocks',
-    'https://invidious.slipfox.xyz',
-    'https://y.com.sb',
-  ];
-
-  for (const instance of instances) {
+  for (const instance of ['https://inv.riverside.rocks', 'https://yt.artemislena.eu', 'https://invidious.jing.rocks', 'https://invidious.slipfox.xyz', 'https://y.com.sb']) {
     try {
       const res = await fetch(`${instance}/api/v1/videos/${videoId}`, {
         signal: AbortSignal.timeout(5000),
@@ -457,14 +454,9 @@ async function getInvidiousStreamUrl(url: string): Promise<string | null> {
       if (!res.ok) continue;
       const json: any = await res.json();
       const all: any[] = [...(json?.formatStream || []), ...(json?.adaptiveFormats || [])];
-      const mp4 = all.find((f: any) => f.type?.startsWith('video/mp4') && f.url);
-      const anyVideo = all.find((f: any) => f.type?.startsWith('video/') && f.url);
-      const url = mp4?.url || anyVideo?.url || null;
-      if (url) return url;
-    } catch (e: any) {
-      console.log(`Invidious ${instance}:`, e?.message?.substring(0, 100) || 'failed');
-      continue;
-    }
+      const first = all.find((f: any) => f.url);
+      if (first?.url) return first.url;
+    } catch { continue; }
   }
   return null;
 }
@@ -529,42 +521,51 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
 });
 
 router.get('/proxy', async (req: Request, res: Response): Promise<void> => {
-  const url = req.query.url as string;
-  if (!url) {
-    res.status(400).json({ success: false, error: 'URL query parameter is required' });
+  const sourceUrl = req.query.url as string;
+  if (!sourceUrl) {
+    res.status(400).json({ success: false, error: 'url query param required' });
+    return;
+  }
+  if (detectPlatform(sourceUrl) !== 'youtube') {
+    res.status(400).json({ success: false, error: 'Only YouTube supported' });
     return;
   }
 
   try {
     const ytdl = require('@distube/ytdl-core');
-    const platform = detectPlatform(url);
-
-    if (platform !== 'youtube') {
-      res.status(400).json({ success: false, error: 'Proxy only supports YouTube URLs' });
+    const info = await ytdl.getInfo(sourceUrl, {
+      requestOptions: {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' }
+      }
+    });
+    const format = ytdl.chooseFormat(info.formats, { quality: 'highest' });
+    if (!format?.url) {
+      res.status(500).json({ success: false, error: 'No playable format found' });
       return;
     }
 
-    const formatId = (req.query.format as string) || 'highest';
+    const videoUrl = format.url;
+    const mimeType = format.mimeType?.split(';')[0] || 'video/mp4';
 
-    const stream = ytdl(url, {
-      quality: formatId === 'highest' ? 'highest' : formatId,
-      filter: 'audioandvideo'
-    });
+    const range = req.headers.range;
+    const headers: Record<string, string> = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' };
+    if (range) headers['Range'] = range;
 
-    stream.on('info', (info: any, format: any) => {
-      const mimeType = format.mimeType?.split(';')[0] || 'video/mp4';
-      res.setHeader('Content-Type', mimeType);
-      res.setHeader('Accept-Ranges', 'bytes');
-    });
+    const proxyRes = await fetch(videoUrl, { headers });
 
-    stream.on('error', (err: Error) => {
-      console.error('Proxy stream error:', err.message);
-      if (!res.headersSent) {
-        res.status(500).json({ success: false, error: err.message });
-      }
-    });
+    if (proxyRes.headers.get('content-type')) res.setHeader('Content-Type', proxyRes.headers.get('content-type')!);
+    if (proxyRes.headers.get('content-length')) res.setHeader('Content-Length', proxyRes.headers.get('content-length')!);
+    if (proxyRes.headers.get('content-range')) res.setHeader('Content-Range', proxyRes.headers.get('content-range')!);
+    if (proxyRes.headers.get('accept-ranges')) res.setHeader('Accept-Ranges', proxyRes.headers.get('accept-ranges')!);
 
-    stream.pipe(res);
+    res.status(proxyRes.status);
+
+    if (proxyRes.body) {
+      const nodeStream = require('stream').Readable.fromWeb(proxyRes.body);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
   } catch (err: any) {
     console.error('Proxy error:', err.message);
     if (!res.headersSent) {
