@@ -311,7 +311,7 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
 
     const infoArgs: string[] = [
       url, '--sleep-requests', '2',
-      '--js-interpreter', process.execPath,
+      '--js-runtimes', `node:${process.execPath}`,
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--geo-bypass',
       '--force-ipv4',
@@ -530,7 +530,7 @@ async function startDownload(url: string, filePath: string, formatId: string, do
     const args: string[] = [
       url, '-o', filePath, '--no-playlist', '--newline', '--no-mtime',
       '--sleep-requests', '2',
-      '--js-interpreter', process.execPath,
+      '--js-runtimes', `node:${process.execPath}`,
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--geo-bypass',
       '--retries', '10',
