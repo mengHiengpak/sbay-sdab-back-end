@@ -381,6 +381,33 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+async function loadCookieHeader(platform: string = 'youtube'): Promise<string | null> {
+  try {
+    const doc = await Setting.findOne({ key: `${platform}_cookies` });
+    if (!doc?.value) return null;
+    const ageHours = (Date.now() - new Date(doc.updatedAt || doc.createdAt).getTime()) / (1000 * 60 * 60);
+    if (ageHours > 24) {
+      console.log(`⚠️ ${platform} cookies are ${Math.round(ageHours)}h old, skipping`);
+      return null;
+    }
+    const lines = doc.value.split('\n');
+    const cookies: string[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
+      const parts = trimmed.split('\t');
+      if (parts.length >= 7) {
+        const name = parts[parts.length - 2]?.trim();
+        const value = parts[parts.length - 1]?.trim();
+        if (name && value) cookies.push(`${encodeURIComponent(name)}=${encodeURIComponent(value)}`);
+      }
+    }
+    return cookies.length > 0 ? cookies.join('; ') : null;
+  } catch {
+    return null;
+  }
+}
+
 router.post('/stream', async (req: Request, res: Response): Promise<void> => {
   const { url } = req.body;
   if (!url || typeof url !== 'string') {
@@ -395,12 +422,13 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
 
   try {
     const ytdl = require('@distube/ytdl-core');
-    const info = await ytdl.getInfo(url, {
-      requestOptions: {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
-      }
-    });
+    const cookieHeader = await loadCookieHeader();
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    };
+    if (cookieHeader) headers['Cookie'] = cookieHeader;
 
+    const info = await ytdl.getInfo(url, { requestOptions: { headers } });
     const fmt = ytdl.chooseFormat(info.formats, { quality: 'highestvideo', filter: 'audioandvideo' });
     const streamUrl = fmt?.url || info.formats.find((f: any) => f.url)?.url;
 
@@ -409,7 +437,7 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    res.json({ success: true, data: { streamUrl, platform: 'youtube' } });
+    res.json({ success: true, data: { streamUrl, platform: 'youtube', _cookies: !!cookieHeader } });
   } catch (e: any) {
     const msg = e?.message || String(e);
     console.error('Stream error:', msg.substring(0, 500));
@@ -430,12 +458,16 @@ router.get('/proxy', async (req: Request, res: Response): Promise<void> => {
 
   try {
     const ytdl = require('@distube/ytdl-core');
+    const cookieHeader = await loadCookieHeader();
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    };
+    if (cookieHeader) headers['Cookie'] = cookieHeader;
+
     const stream = ytdl(sourceUrl, {
       quality: 'highestvideo',
       filter: 'audioandvideo',
-      requestOptions: {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
-      }
+      requestOptions: { headers }
     });
 
     stream.on('info', (info: any, format: any) => {
