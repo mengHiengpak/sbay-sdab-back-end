@@ -479,23 +479,11 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
     }
   }
 
-  // Fallback: Invidious
+  // Fallback: play directly in browser via YouTube embed
   const videoId = parseYouTubeId(url);
   if (videoId) {
-    for (const instance of ['https://inv.riverside.rocks', 'https://yt.artemislena.eu', 'https://invidious.jing.rocks']) {
-      try {
-        const apiRes = await fetch(`${instance}/api/v1/videos/${videoId}`, {
-          signal: AbortSignal.timeout(5000),
-          headers: { 'User-Agent': 'Mozilla/5.0' }
-        });
-        if (!apiRes.ok) continue;
-        const json: any = await apiRes.json();
-        const all: any[] = [...(json?.formatStream || []), ...(json?.adaptiveFormats || [])];
-        const u = all.find((f: any) => f.url)?.url;
-        if (u) { res.json({ success: true, data: { streamUrl: u, platform, _fallback: 'invidious' } }); return; }
-      } catch { continue; }
-    }
-    errors.push('invidious: all instances failed');
+    res.json({ success: true, data: { streamUrl: '', platform, youtubeDirect: true, videoId, title: url } });
+    return;
   }
 
   console.error('All stream methods failed:', errors);

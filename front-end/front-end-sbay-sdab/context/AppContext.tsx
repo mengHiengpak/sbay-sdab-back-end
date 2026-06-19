@@ -24,6 +24,7 @@ interface AppState {
   modal: ModalData | null;
   showQueue: boolean;
   sidebarOpen: boolean;
+  youtubeVideoId: string | null;
   currentTime: number;
   duration: number;
   volume: number;
@@ -48,6 +49,7 @@ const initialState: AppState = {
   modal: null,
   showQueue: false,
   sidebarOpen: false,
+  youtubeVideoId: null,
   currentTime: 0,
   duration: 0,
   volume: 0.7,
@@ -83,6 +85,7 @@ type Action =
   | { type: 'SET_MUTED'; payload: boolean }
   | { type: 'SET_USER'; payload: User | null }
   | { type: 'SET_AUTH_LOADING'; payload: boolean }
+  | { type: 'SET_YOUTUBE_VIDEO_ID'; payload: string | null }
 ;
 
 function reducer(state: AppState, action: Action): AppState {
@@ -146,6 +149,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, user: action.payload };
     case 'SET_AUTH_LOADING':
       return { ...state, isAuthLoading: action.payload };
+    case 'SET_YOUTUBE_VIDEO_ID':
+      return { ...state, youtubeVideoId: action.payload, isPlaying: !!action.payload };
     default:
       return state;
   }
@@ -291,6 +296,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }, !!token);
       if (!res.success) throw new Error(((res.error as string) || 'Stream failed') + ((res as any).details ? ' | ' + (res as any).details.join(' | ') : ''));
       const data = res.data as any;
+      if (data?.youtubeDirect && data?.videoId) {
+        updateToast(toastId, { type: 'success', title: 'Opening YouTube player...', subtitle: '' });
+        setTimeout(() => removeToast(toastId), 1500);
+        dispatch({ type: 'SET_YOUTUBE_VIDEO_ID', payload: data.videoId });
+        return;
+      }
       if (!data?.streamUrl) throw new Error('No stream URL returned');
       updateToast(toastId, { type: 'success', title: 'Ready to play', subtitle: '' });
       setTimeout(() => removeToast(toastId), 1500);

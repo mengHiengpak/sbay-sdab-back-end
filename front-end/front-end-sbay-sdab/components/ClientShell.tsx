@@ -7,6 +7,7 @@ import AmbientBg from '@/components/AmbientBg';
 import Sidebar from '@/components/Sidebar';
 import TopBar from '@/components/TopBar';
 import PlayerBar from '@/components/PlayerBar';
+import YouTubePlayer from '@/components/YouTubePlayer';
 import Modal from '@/components/Modal';
 import ToastContainer from '@/components/Toast';
 import QueuePanel from '@/components/QueuePanel';
@@ -64,6 +65,7 @@ function LayoutContent({ children }: { children: ReactNode }) {
         </main>
         <Modal />
         <ToastContainer />
+        <YouTubePlayer />
       </>
     );
   }
@@ -84,6 +86,7 @@ function LayoutContent({ children }: { children: ReactNode }) {
       <Modal />
       <ToastContainer />
       <QueuePanel />
+      <YouTubePlayer />
     </>
   );
 }
