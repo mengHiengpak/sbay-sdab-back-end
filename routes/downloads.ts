@@ -456,7 +456,7 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
     streamUrl = fmt?.url || info.formats.find((f: any) => f.url)?.url;
     if (streamUrl) { res.json({ success: true, data: { streamUrl, platform, _auth: 'ytdl-core' } }); return; }
     errors.push('ytdl-core: no url');
-  } catch (e: any) { errors.push('ytdl-core: ' + (e?.message || '').substring(0, 100)); }
+  } catch (e: any) { errors.push('ytdl-core: ' + (e?.message || '').substring(0, 200)); }
 
   // Strategy 5: Invidious API
   const videoId = parseYouTubeId(url);
@@ -474,11 +474,11 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
         if (u) { res.json({ success: true, data: { streamUrl: u, platform, _auth: 'invidious' } }); return; }
       } catch { continue; }
     }
-    errors.push('invidious: no url from any instance');
+    errors.push('invidious: no url from inv.riverside.rocks, yt.artemislena.eu, invidious.jing.rocks');
   }
 
   console.error('All stream strategies failed:', errors);
-  res.status(500).json({ success: false, error: 'All methods failed', details: errors });
+  res.status(500).json({ success: false, error: 'All methods failed: ' + errors.join(' | ') });
 });
 
 router.get('/proxy', async (req: Request, res: Response): Promise<void> => {
