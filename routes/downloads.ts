@@ -383,24 +383,29 @@ router.post('/info', async (req: Request, res: Response): Promise<void> => {
 
 
 
-async function runYtDlp(url: string, extraArgs: string[] = []): Promise<string | null> {
-  const ytDlpPath = getYtDlpPath();
-  if (!ytDlpPath) return null;
+async function loadCookieHeader(platform: string = 'youtube'): Promise<string | null> {
   try {
-    const { execFileSync } = require('child_process');
-    const args: string[] = [
-      url, '-g', '--no-playlist',
-      '--js-runtimes', `node:${process.execPath}`,
-      '--geo-bypass', '--force-ipv4',
-      '--no-check-certificate',
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      ...extraArgs,
-      '-f', 'best[ext=mp4]/best',
-    ];
-    const out = execFileSync(ytDlpPath, args, { encoding: 'utf8', timeout: 60000 }).toString().trim();
-    return out.split('\n').find((l: string) => l.startsWith('http')) || null;
+    const doc = await Setting.findOne({ key: `${platform}_cookies` });
+    if (!doc?.value) return null;
+    const ageHours = (Date.now() - new Date(doc.updatedAt || doc.createdAt).getTime()) / (1000 * 60 * 60);
+    if (ageHours > 24) return null;
+    const lines = doc.value.split('\n');
+    const cookies: string[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
+      const parts = trimmed.split('\t');
+      if (parts.length >= 7) {
+        const name = parts[parts.length - 2]?.trim();
+        const value = parts[parts.length - 1]?.trim();
+        if (name && value) cookies.push(`${encodeURIComponent(name)}=${encodeURIComponent(value)}`);
+      }
+    }
+    return cookies.length > 0 ? cookies.join('; ') : null;
   } catch { return null; }
 }
+
+const YTDL_CLIENTS: Array<"WEB_EMBEDDED" | "TV" | "IOS" | "ANDROID" | "WEB"> = ['ANDROID', 'TV', 'WEB_EMBEDDED', 'IOS', 'WEB'];
 
 router.post('/stream', async (req: Request, res: Response): Promise<void> => {
   const { url } = req.body;
@@ -415,50 +420,62 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  let streamUrl: string | null = null;
   const errors: string[] = [];
+  const ytdl = require('@distube/ytdl-core');
+  const cookieHeader = await loadCookieHeader();
 
-  // Strategy 1: yt-dlp with cookies + web_embedded
-  const cookieArgs = await getCookieArgs(platform);
-  streamUrl = await runYtDlp(url, [
-    ...cookieArgs,
-    ...getPlatformHeaders(platform),
-    '--extractor-args', 'youtube:player_client=web_embedded;player_skip=webpage,js',
-  ]);
-  if (streamUrl) { res.json({ success: true, data: { streamUrl, platform } }); return; }
-  errors.push('cookies+embedded failed');
+  // Try ytdl-core with different player clients
+  for (const client of YTDL_CLIENTS) {
+    try {
+      const headers: Record<string, string> = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      };
+      if (cookieHeader) headers['Cookie'] = cookieHeader;
 
-  // Strategy 2: yt-dlp without cookies, android client
-  streamUrl = await runYtDlp(url, [
-    ...getPlatformHeaders(platform),
-    '--extractor-args', 'youtube:player_client=android;player_skip=webpage,js',
-  ]);
-  if (streamUrl) { res.json({ success: true, data: { streamUrl, platform, _auth: 'android' } }); return; }
-  errors.push('android failed');
-
-  // Strategy 3: yt-dlp without cookies, tv_embedded client
-  streamUrl = await runYtDlp(url, [
-    ...getPlatformHeaders(platform),
-    '--extractor-args', 'youtube:player_client=tv_embedded;player_skip=webpage,js',
-  ]);
-  if (streamUrl) { res.json({ success: true, data: { streamUrl, platform, _auth: 'tv' } }); return; }
-  errors.push('tv_embedded failed');
-
-  // Strategy 4: ytdl-core (no cookies)
-  try {
-    const ytdl = require('@distube/ytdl-core');
-    const info = await ytdl.getInfo(url, {
-      requestOptions: {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      const info = await ytdl.getInfo(url, {
+        playerClients: [client],
+        requestOptions: { headers }
+      });
+      const fmt = ytdl.chooseFormat(info.formats, { quality: 'highestvideo', filter: 'audioandvideo' });
+      const streamUrl = fmt?.url || info.formats.find((f: any) => f.url)?.url;
+      if (streamUrl) {
+        res.json({ success: true, data: { streamUrl, platform, _client: client } });
+        return;
       }
-    });
-    const fmt = ytdl.chooseFormat(info.formats, { quality: 'highestvideo', filter: 'audioandvideo' });
-    streamUrl = fmt?.url || info.formats.find((f: any) => f.url)?.url;
-    if (streamUrl) { res.json({ success: true, data: { streamUrl, platform, _auth: 'ytdl-core' } }); return; }
-    errors.push('ytdl-core: no url');
-  } catch (e: any) { errors.push('ytdl-core: ' + (e?.message || '').substring(0, 200)); }
+      errors.push(`ytdl[${client}]: no url`);
+    } catch (e: any) {
+      errors.push(`ytdl[${client}]: ` + (e?.message || '').substring(0, 120));
+    }
+  }
 
-  // Strategy 5: Invidious API
+  // Fallback: yt-dlp with cookies
+  const cookieArgs = await getCookieArgs(platform);
+  for (const playerClient of ['web_embedded', 'android', 'tv_embedded']) {
+    try {
+      const { execFileSync } = require('child_process');
+      const ytDlpPath = getYtDlpPath();
+      if (!ytDlpPath) break;
+      const args = [
+        url, '-g', '--no-playlist',
+        '--js-runtimes', `node:${process.execPath}`,
+        '--geo-bypass', '--force-ipv4',
+        '--no-check-certificate',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        ...cookieArgs,
+        ...getPlatformHeaders(platform),
+        '--extractor-args', `youtube:player_client=${playerClient};player_skip=webpage,js`,
+        '-f', 'best[ext=mp4]/best',
+      ];
+      const out = execFileSync(ytDlpPath, args, { encoding: 'utf8', timeout: 60000 }).toString().trim();
+      const su = out.split('\n').find((l: string) => l.startsWith('http'));
+      if (su) { res.json({ success: true, data: { streamUrl: su, platform, _fallback: 'yt-dlp' } }); return; }
+      errors.push(`yt-dlp[${playerClient}]: no url`);
+    } catch (e: any) {
+      errors.push(`yt-dlp[${playerClient}]: ` + ((e as any).stderr || (e as any).message || '').substring(0, 120));
+    }
+  }
+
+  // Fallback: Invidious
   const videoId = parseYouTubeId(url);
   if (videoId) {
     for (const instance of ['https://inv.riverside.rocks', 'https://yt.artemislena.eu', 'https://invidious.jing.rocks']) {
@@ -471,13 +488,13 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
         const json: any = await apiRes.json();
         const all: any[] = [...(json?.formatStream || []), ...(json?.adaptiveFormats || [])];
         const u = all.find((f: any) => f.url)?.url;
-        if (u) { res.json({ success: true, data: { streamUrl: u, platform, _auth: 'invidious' } }); return; }
+        if (u) { res.json({ success: true, data: { streamUrl: u, platform, _fallback: 'invidious' } }); return; }
       } catch { continue; }
     }
-    errors.push('invidious: no url from inv.riverside.rocks, yt.artemislena.eu, invidious.jing.rocks');
+    errors.push('invidious: all instances failed');
   }
 
-  console.error('All stream strategies failed:', errors);
+  console.error('All stream methods failed:', errors);
   res.status(500).json({ success: false, error: 'All methods failed: ' + errors.join(' | ') });
 });
 
@@ -494,67 +511,77 @@ router.get('/proxy', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const ytDlpPath = getYtDlpPath();
-  if (!ytDlpPath) {
-    res.status(500).json({ success: false, error: 'yt-dlp not found' });
-    return;
+  const cookieHeader = await loadCookieHeader();
+  const ytdl = require('@distube/ytdl-core');
+
+  // Try to get a stream URL using getInfo with different clients
+  let streamUrl: string | null = null;
+  for (const client of YTDL_CLIENTS) {
+    try {
+      const headers: Record<string, string> = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      };
+      if (cookieHeader) headers['Cookie'] = cookieHeader;
+      const info = await ytdl.getInfo(sourceUrl, { playerClients: [client], requestOptions: { headers } });
+      const fmt = ytdl.chooseFormat(info.formats, { quality: 'highestvideo', filter: 'audioandvideo' });
+      const u = fmt?.url || info.formats.find((f: any) => f.url)?.url;
+      if (u) { streamUrl = u; break; }
+    } catch { continue; }
   }
 
-  const cookieArgs = await getCookieArgs(platform);
-  const strategyArgs = [
-    [...cookieArgs, ...getPlatformHeaders(platform), '--extractor-args', 'youtube:player_client=web_embedded;player_skip=webpage,js'],
-    [...getPlatformHeaders(platform), '--extractor-args', 'youtube:player_client=android;player_skip=webpage,js'],
-    [...getPlatformHeaders(platform), '--extractor-args', 'youtube:player_client=tv_embedded;player_skip=webpage,js'],
-  ];
-
-  // Find a working strategy first (using -g)
-  let workingArgs: string[] | null = null;
-  for (const args of strategyArgs) {
-    const url = await runYtDlp(sourceUrl, args);
-    if (url) { workingArgs = args; break; }
-  }
-
-  if (!workingArgs) {
-    res.status(500).json({ success: false, error: 'No working strategy found' });
-    return;
-  }
-
-  // Spawn with the working strategy
-  try {
-    const { spawn } = require('child_process');
-    const args: string[] = [
-      sourceUrl, '-o', '-', '--no-playlist',
-      '--js-runtimes', `node:${process.execPath}`,
-      '--geo-bypass', '--force-ipv4',
-      '--no-check-certificate',
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      ...workingArgs,
-      '-f', 'best[ext=mp4]/best',
-    ];
-
-    const proc = spawn(ytDlpPath, args);
-
-    proc.stderr.on('data', (data: Buffer) => {
-      const s = data.toString();
-      if (s.includes('ERROR')) console.error('yt-dlp proxy error:', s);
-    });
-
-    proc.on('error', (err: Error) => {
-      console.error('Proxy spawn error:', err.message);
-      if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
-    });
-
-    proc.on('close', (code: number | null) => {
-      if (code !== 0 && !res.headersSent) {
-        res.status(500).json({ success: false, error: `yt-dlp exited code ${code}` });
+  // Fallback: yt-dlp -g
+  if (!streamUrl) {
+    const ytDlpPath = getYtDlpPath();
+    if (ytDlpPath) {
+      const cookieArgs = await getCookieArgs(platform);
+      for (const pc of ['web_embedded', 'android', 'tv_embedded']) {
+        try {
+          const { execFileSync } = require('child_process');
+          const out = execFileSync(ytDlpPath, [
+            sourceUrl, '-g', '--no-playlist',
+            '--js-runtimes', `node:${process.execPath}`,
+            '--geo-bypass', '--force-ipv4',
+            '--no-check-certificate',
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            ...cookieArgs,
+            ...getPlatformHeaders(platform),
+            '--extractor-args', `youtube:player_client=${pc};player_skip=webpage,js`,
+            '-f', 'best[ext=mp4]/best',
+          ], { encoding: 'utf8', timeout: 30000 }).toString().trim();
+          const u = out.split('\n').find((l: string) => l.startsWith('http'));
+          if (u) { streamUrl = u; break; }
+        } catch { continue; }
       }
-    });
+    }
+  }
 
-    res.setHeader('Content-Type', 'video/mp4');
-    res.setHeader('Accept-Ranges', 'bytes');
-    proc.stdout.pipe(res);
+  if (!streamUrl) {
+    res.status(500).json({ success: false, error: 'Could not get stream URL' });
+    return;
+  }
+
+  // Proxy the URL through the server
+  try {
+    const range = req.headers.range;
+    const proxyHeaders: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    };
+    if (range) proxyHeaders['Range'] = range;
+
+    const proxyRes = await fetch(streamUrl, { headers: proxyHeaders });
+    if (proxyRes.headers.get('content-type')) res.setHeader('Content-Type', proxyRes.headers.get('content-type')!);
+    if (proxyRes.headers.get('content-length')) res.setHeader('Content-Length', proxyRes.headers.get('content-length')!);
+    if (proxyRes.headers.get('content-range')) res.setHeader('Content-Range', proxyRes.headers.get('content-range')!);
+    if (proxyRes.headers.get('accept-ranges')) res.setHeader('Accept-Ranges', proxyRes.headers.get('accept-ranges')!);
+    res.status(proxyRes.status);
+    if (proxyRes.body) {
+      const nodeStream = require('stream').Readable.fromWeb(proxyRes.body);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
   } catch (err: any) {
-    console.error('Proxy error:', err.message);
+    console.error('Proxy fetch error:', err.message);
     if (!res.headersSent) res.status(502).json({ success: false, error: err.message });
   }
 });
